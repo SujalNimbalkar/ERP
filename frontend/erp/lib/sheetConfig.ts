@@ -1,0 +1,556 @@
+import type { FieldConfig, FieldSection, ModuleConfig } from "./types";
+
+export const MODULES: ModuleConfig[] = [
+  {
+    id: "cargo",
+    label: "Cargo Transport",
+    description: "Billing, freight & route (H19, J14, J15 - J16, Matoshri, Minerva, Machine Shop)",
+  },
+  {
+    id: "infra",
+    label: "Infra & Crusher",
+    description: "Crusher and infrastructure transport",
+  },
+  {
+    id: "diesel",
+    label: "Diesel Tank",
+    description: "Full tank fills shared across multiple trips",
+  },
+  {
+    id: "drivers",
+    label: "Drivers",
+    description: "Driver master and salary management",
+  },
+  {
+    id: "ledger",
+    label: "Customer Ledger",
+    description: "Customer debit and credit entries",
+  },
+  {
+    id: "materials",
+    label: "Material Master",
+    description: "Browse built-in materials and add custom entries",
+  },
+  {
+    id: "records",
+    label: "Saved Records",
+    description: "View saved entries in table form",
+  },
+];
+
+export const CARGO_SOURCES = [
+  { type: "cargo-h19", label: "H19 - Paranjape Satara", sheetTab: "H19" },
+  { type: "cargo-j14", label: "J14 - Paranjape Satara", sheetTab: "J14" },
+  { type: "cargo-j15-j16", label: "J15 - J16 - Paranjape Satara", sheetTab: "J15 -  J16" },
+  { type: "cargo-matoshri", label: "Matoshri Enterprise - Shirwal", sheetTab: "Matoshri enterprise" },
+  { type: "cargo-minerva", label: "Minerva Enterprises - Kolhapur", sheetTab: "Minerva Enterprises" },
+  { type: "cargo-machine-shop", label: "Machine Shop - Paranjape Shirwal", sheetTab: "Machine Shop - Shirwal" },
+] as const;
+
+export type CargoSourceType = (typeof CARGO_SOURCES)[number]["type"];
+
+/** Valid destinations per origin — used for the To dropdown */
+export const CARGO_DESTINATIONS: Record<CargoSourceType, string[]> = {
+  "cargo-h19": [
+    "J14 - Paranjape Satara",
+    "J15 - J16 - Paranjape Satara",
+    "Machine Shop - Paranjape Shirwal",
+    "Minerva Enterprises - Kolhapur",
+    "Matoshri Enterprise - Shirwal",
+  ],
+  "cargo-j14": [
+    "Machine Shop - Paranjape Shirwal",
+    "Minerva Enterprises - Kolhapur",
+    "H19 - Paranjape Satara",
+    "J15 - J16 - Paranjape Satara",
+    "Matoshri Enterprise - Shirwal",
+  ],
+  "cargo-j15-j16": [
+    "Minerva Enterprises - Kolhapur",
+    "J14 - Paranjape Satara",
+    "H19 - Paranjape Satara",
+    "Machine Shop - Paranjape Shirwal",
+    "Matoshri Enterprise - Shirwal",
+  ],
+  "cargo-matoshri": [
+    "J14 - Paranjape Satara",
+    "J15 - J16 - Paranjape Satara",
+    "H19 - Paranjape Satara",
+    "Machine Shop - Paranjape Shirwal",
+    "Minerva Enterprises - Kolhapur",
+  ],
+  "cargo-minerva": [
+    "J14 - Paranjape Satara",
+    "J15 - J16 - Paranjape Satara",
+    "H19 - Paranjape Satara",
+    "Machine Shop - Paranjape Shirwal",
+    "Matoshri Enterprise - Shirwal",
+  ],
+  "cargo-machine-shop": [
+    "J14 - Paranjape Satara",
+    "J15 - J16 - Paranjape Satara",
+    "H19 - Paranjape Satara",
+    "Minerva Enterprises - Kolhapur",
+    "Matoshri Enterprise - Shirwal",
+  ],
+};
+
+export function getCargoRouteDefaults(sourceType: CargoSourceType) {
+  const source = CARGO_SOURCES.find((s) => s.type === sourceType);
+  return {
+    fromLocation: source?.label ?? "",
+    toOptions: CARGO_DESTINATIONS[sourceType] ?? [],
+  };
+}
+
+export const PLANT_LOCATIONS = [
+  "H19",
+  "J14",
+  "J15",
+  "J16",
+  "Matoshri Enterprise",
+  "Minerva Enterprises",
+];
+
+/** Form sections — columns aligned to Google Sheet headers */
+export const CARGO_SECTIONS: FieldSection[] = [
+  {
+    id: "document",
+    title: "Document",
+    fields: [
+      {
+        name: "documentNo",
+        label: "Invoice / DC No",
+        type: "text",
+        required: true,
+        placeholder: "e.g. 5900089218, ME1/JUL26/04",
+      },
+      { name: "date", label: "Date", type: "date", required: true },
+    ],
+  },
+  {
+    id: "route",
+    title: "Route",
+    description: "From plant to consignee — e.g. Minerva → J-14, J-15/16 → Minerva",
+    fields: [
+      {
+        name: "fromLocation",
+        label: "From",
+        type: "text",
+        required: true,
+        readOnly: true,
+      },
+      {
+        name: "toParty",
+        label: "To",
+        type: "select",
+        required: true,
+        options: [],
+        colSpan: 2,
+      },
+    ],
+  },
+  {
+    id: "transport",
+    title: "Transport",
+    fields: [
+      {
+        name: "vehicleNo",
+        label: "Vehicle No.",
+        type: "text",
+        required: true,
+        placeholder: "e.g. MH11CH2030",
+      },
+      {
+        name: "lrNo",
+        label: "L.R. No.",
+        type: "text",
+        placeholder: "e.g. 1517",
+      },
+    ],
+  },
+  {
+    id: "material",
+    title: "Material",
+    description:
+      "Enter material code — name and per-piece weight auto-fill. Trip rate is Rs 0.78/kg below 5.5 tons, Rs 0.74/kg from 5.5 to 9 tons, and Rs 0.72/kg above 9 tons.",
+    fields: [
+      {
+        name: "materialCode",
+        label: "Item / Material Code",
+        type: "text",
+        required: true,
+      },
+      {
+        name: "materialDescription",
+        label: "Material Name",
+        type: "text",
+        readOnly: true,
+      },
+      {
+        name: "hsnCode",
+        label: "HSN / SAC Code",
+        type: "text",
+        placeholder: "e.g. 73259910",
+      },
+      {
+        name: "quantity",
+        label: "Quantity",
+        type: "number",
+        required: true,
+        step: "0.01",
+      },
+      {
+        name: "uom",
+        label: "Unit",
+        type: "select",
+        required: true,
+        options: ["EA", "KG", "Brass"],
+      },
+      {
+        name: "perPartWt",
+        label: "Per Part Wt (Kg)",
+        type: "number",
+        step: "0.01",
+        readOnly: true,
+        placeholder: "Auto-filled from material master",
+      },
+      {
+        name: "totalWt",
+        label: "Total Wt (Kg)",
+        type: "number",
+        step: "0.01",
+        readOnly: true,
+      },
+      {
+        name: "transportRate",
+        label: "Transport Rate (Rs)",
+        type: "number",
+        step: "0.01",
+        readOnly: true,
+      },
+      {
+        name: "transportAmount",
+        label: "Transport Amount (Rs)",
+        type: "number",
+        step: "0.01",
+        readOnly: true,
+      },
+      {
+        name: "rateTier",
+        label: "Rate Applied",
+        type: "text",
+        readOnly: true,
+        placeholder: "Standard or Partial load",
+      },
+    ],
+  },
+  {
+    id: "expenses",
+    title: "Trip Expenses",
+    description: "Link to an active tank fill — enter this trip's diesel share if known",
+    fields: [
+      {
+        name: "dieselFillRef",
+        label: "Diesel Fill Ref",
+        type: "text",
+        placeholder: "e.g. MH11CH2030-2026-07-03",
+      },
+      {
+        name: "dieselUsedThisTrip",
+        label: "Diesel Used This Trip (Rs)",
+        type: "number",
+        step: "0.01",
+        placeholder: "Leave blank if unknown — reconcile in sheet",
+      },
+      {
+        name: "tollOverloadAmount",
+        label: "Toll + Overload (Rs)",
+        type: "number",
+        step: "0.01",
+      },
+    ],
+  },
+  {
+    id: "receipt",
+    title: "Receipt (Optional)",
+    description: "Receiving stamp on inbound bills",
+    fields: [
+      {
+        name: "receivedQty",
+        label: "Received Qty",
+        type: "number",
+        step: "0.01",
+      },
+      { name: "receivedDate", label: "Received Date", type: "date" },
+    ],
+  },
+];
+
+/** Flat list of all cargo fields — used for empty state & sheet columns */
+export const CARGO_FIELDS = CARGO_SECTIONS.flatMap((s) => s.fields);
+
+export const DRIVER_MASTER_FIELDS: FieldConfig[] = [
+  {
+    name: "driverId",
+    label: "Driver ID (auto)",
+    type: "text",
+    readOnly: true,
+  },
+  {
+    name: "firstName",
+    label: "First Name",
+    type: "text",
+    required: true,
+  },
+  {
+    name: "middleName",
+    label: "Middle Name",
+    type: "text",
+  },
+  {
+    name: "surname",
+    label: "Surname",
+    type: "text",
+    required: true,
+  },
+  {
+    name: "mobileNumber",
+    label: "Mobile Number",
+    type: "text",
+    required: true,
+    placeholder: "10-digit mobile number",
+  },
+  {
+    name: "aadharNumber",
+    label: "Aadhar Number",
+    type: "text",
+    // required: true,
+    placeholder: "12-digit Aadhar number",
+  },
+  {
+    name: "accountNumber",
+    label: "Account Number",
+    type: "text",
+    // required: true,
+  },
+  {
+    name: "totalSalary",
+    label: "Total Salary (Rs)",
+    type: "number",
+    required: true,
+    // step: "0.01",
+  },
+];
+
+
+export const DIESEL_FILL_FIELDS: FieldConfig[] = [
+  {
+    name: "fillRef",
+    label: "Fill Ref (auto)",
+    type: "text",
+    readOnly: true,
+    placeholder: "Generated from vehicle + date",
+    colSpan: 2,
+  },
+  { name: "date", label: "Fill Date", type: "date", required: true },
+  {
+    name: "vehicleNo",
+    label: "Vehicle No.",
+    type: "text",
+    required: true,
+    placeholder: "e.g. MH11CH2030",
+  },
+  {
+    name: "fillAmount",
+    label: "Tank Fill Amount (Rs)",
+    type: "number",
+    required: true,
+    step: "0.01",
+    placeholder: "Total paid for full tank",
+  },
+  {
+    name: "liters",
+    label: "Liters Filled",
+    type: "number",
+    step: "0.01",
+    placeholder: "Optional",
+  },
+  {
+    name: "driverName",
+    label: "Driver",
+    type: "select",
+    options: [],
+  },
+  {
+    name: "expectedTrips",
+    label: "Expected Trips",
+    type: "number",
+    placeholder: "How many trips this fill should cover",
+  },
+  {
+    name: "note",
+    label: "Note",
+    type: "textarea",
+    placeholder: "e.g. Full tank for Satara–Kolhapur runs",
+    colSpan: 2,
+  },
+];
+
+export const INFRA_FIELDS: FieldConfig[] = [
+  { name: "date", label: "Date", type: "date", required: true },
+  { name: "vehicleNo", label: "Vehicle No", type: "text", required: true },
+  { name: "crusherChallanNo", label: "Crusher Challan No", type: "text" },
+  { name: "materialType", label: "Type of Material", type: "text", placeholder: "Dabar, Khadi, Sand..." },
+  { name: "crusherRate", label: "Crusher Rate", type: "number", step: "0.01" },
+  { name: "crusherBrass", label: "Crusher Brass", type: "number", step: "0.01" },
+  { name: "crusherAmount", label: "Crusher Amount", type: "number", step: "0.01" },
+  { name: "diesel", label: "Diesel", type: "number", step: "0.01" },
+  { name: "challanNo", label: "Challan No", type: "text" },
+  { name: "customerName", label: "Customer Name", type: "text", required: true },
+  { name: "qtyBrass", label: "Qty (In Brass)", type: "number", step: "0.01" },
+  { name: "rate", label: "Rate", type: "number", step: "0.01" },
+  { name: "totalAmount", label: "Total Amount", type: "number", step: "0.01" },
+  { name: "difference", label: "Difference", type: "number", step: "0.01" },
+];
+
+export const PALLET_FIELDS: FieldConfig[] = [
+  { name: "date", label: "Date", type: "date", required: true },
+  {
+    name: "dcNo",
+    label: "DC No (Delivery Challan)",
+    type: "text",
+    required: true,
+    placeholder: "e.g. 4913243533",
+  },
+  {
+    name: "plant",
+    label: "From Plant",
+    type: "select",
+    required: true,
+    options: PLANT_LOCATIONS,
+  },
+  {
+    name: "toParty",
+    label: "To (Foundry / Plant)",
+    type: "text",
+    required: true,
+    placeholder: "e.g. Cast Iron Foundry J-14",
+  },
+  { name: "materialCode", label: "Material Code", type: "text", required: true },
+  {
+    name: "materialDescription",
+    label: "Material Description",
+    type: "text",
+    required: true,
+    placeholder: "e.g. Empty pallet",
+  },
+  {
+    name: "uom",
+    label: "Unit",
+    type: "select",
+    required: true,
+    options: ["EA", "KG"],
+  },
+  { name: "qty", label: "Qty", type: "number", required: true },
+  { name: "vehicleNo", label: "Vehicle No.", type: "text" },
+  { name: "lrNo", label: "L.R. No.", type: "text" },
+  { name: "freightAmount", label: "Freight (Rs)", type: "number", step: "0.01" },
+  {
+    name: "remarks",
+    label: "Remarks",
+    type: "text",
+    placeholder: "e.g. empty pallet return",
+    colSpan: 2,
+  },
+];
+
+
+/** Four fixed salary dates each month */
+export const SALARY_PAY_DATES = ["1st", "8th", "15th", "22nd"] as const;
+
+export const SALARY_PAYMENT_TYPES = [
+  "Regular Salary",
+  "Advance Payment",
+  "Delayed Payment",
+] as const;
+
+export const SALARY_FIELDS: FieldConfig[] = [
+  {
+    name: "driverId",
+    label: "Driver",
+    type: "select",
+    required: true,
+    options: [],
+  },
+  {
+    name: "driverName",
+    label: "Driver Name",
+    type: "text",
+    readOnly: true,
+  },
+  {
+    name: "paymentType",
+    label: "Payment Type",
+    type: "select",
+    required: true,
+    options: [...SALARY_PAYMENT_TYPES],
+  },
+  {
+    name: "scheduledSalaryDate",
+    label: "Scheduled Salary Date",
+    type: "select",
+    required: true,
+    options: [...SALARY_PAY_DATES],
+    placeholder: "Which of the 4 salary dates this relates to",
+  },
+  {
+    name: "paymentDate",
+    label: "Payment Date",
+    type: "date",
+    required: true,
+    placeholder: "Actual date money was given",
+  },
+  {
+    name: "amount",
+    label: "Amount (Rs)",
+    type: "number",
+    required: true,
+    step: "0.01",
+  },
+  {
+    name: "reason",
+    label: "Reason",
+    type: "textarea",
+    placeholder: "Required for advance or delayed payment",
+    colSpan: 2,
+  },
+];
+
+export const LEDGER_FIELDS: FieldConfig[] = [
+  { name: "date", label: "Date", type: "date", required: true },
+  { name: "receiptNo", label: "Receipt No", type: "text" },
+  { name: "particular", label: "Particular", type: "text", required: true },
+  { name: "vehicleNo", label: "Vehicle No", type: "text" },
+  { name: "rate", label: "Rate", type: "number", step: "0.01" },
+  { name: "brass", label: "Brass", type: "number", step: "0.01" },
+  { name: "debit", label: "Debit (Dr)", type: "number", step: "0.01" },
+  { name: "credit", label: "Credit (Cr)", type: "number", step: "0.01" },
+];
+
+export function emptyValues(fields: FieldConfig[]): Record<string, string> {
+  return Object.fromEntries(fields.map((f) => [f.name, ""]));
+}
+
+export function parseFormData(
+  values: Record<string, string>
+): Record<string, string | number> {
+  const parsed: Record<string, string | number> = {};
+  for (const [key, value] of Object.entries(values)) {
+    const trimmed = value.trim();
+    if (trimmed === "") continue;
+    const num = Number(trimmed);
+    parsed[key] = /^-?\d+(\.\d+)?$/.test(trimmed) ? num : trimmed;
+  }
+  return parsed;
+}
