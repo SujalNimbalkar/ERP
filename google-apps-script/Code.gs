@@ -20,6 +20,7 @@ const SHEET_MAP = {
   drivers: 'Drivers',
   salary: 'Salary',
   ledger: 'Ledger',
+  materials: 'Material Master',
 };
 
 const CARGO_COLUMNS = [
@@ -63,6 +64,9 @@ const COLUMN_ORDER = {
   ],
   ledger: [
     'date', 'receiptNo', 'particular', 'vehicleNo', 'rate', 'brass', 'debit', 'credit',
+  ],
+  materials: [
+    'id', 'code', 'name', 'weightPerPieceKg', 'ratePerKg', 'addedAt',
   ],
 };
 
