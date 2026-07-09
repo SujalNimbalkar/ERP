@@ -51,6 +51,15 @@ export interface ApiResponse {
   storage?: "local" | "remote";
 }
 
+export type MasterType = "vehicle-master" | "vehicle-maintenance" | "materials";
+
+export interface MasterSyncPayload {
+  type: MasterType;
+  action: "upsert" | "delete";
+  data?: Record<string, unknown>;
+  id?: string;
+}
+
 export interface LocalRecord {
   id: string;
   type: SheetType;

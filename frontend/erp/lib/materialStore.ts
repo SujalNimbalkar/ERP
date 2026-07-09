@@ -1,6 +1,7 @@
 "use client";
 
 import { MATERIAL_MASTER, type MaterialMasterEntry } from "./materialMaster";
+import { syncMasterRecord } from "./api";
 
 const CUSTOM_MATERIAL_KEY = "sahyadri_custom_materials";
 
@@ -43,11 +44,13 @@ export function saveCustomMaterial(
   };
   const existing = readCustom().filter((e) => e.id !== entry.id);
   writeCustom([saved, ...existing]);
+  void syncMasterRecord({ type: "materials", action: "upsert", data: saved as unknown as Record<string, unknown> });
   return saved;
 }
 
 export function deleteCustomMaterial(id: string) {
   writeCustom(readCustom().filter((e) => e.id !== id));
+  void syncMasterRecord({ type: "materials", action: "delete", id });
 }
 
 /** Search custom first (allows overriding built-ins by code), then fall back to built-in list */

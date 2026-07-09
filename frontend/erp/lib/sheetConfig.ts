@@ -32,6 +32,11 @@ export const MODULES: ModuleConfig[] = [
     description: "Browse built-in materials and add custom entries",
   },
   {
+    id: "vehicles",
+    label: "Vehicles",
+    description: "Fleet master and maintenance log",
+  },
+  {
     id: "records",
     label: "Saved Records",
     description: "View saved entries in table form",
@@ -381,6 +386,13 @@ export const DIESEL_FILL_FIELDS: FieldConfig[] = [
     label: "Driver",
     type: "select",
     options: [],
+  },
+  {
+    name: "driverId",
+    label: "Driver ID (auto)",
+    type: "text",
+    readOnly: true,
+    placeholder: "Auto-filled from driver selection",
   },
   {
     name: "expectedTrips",

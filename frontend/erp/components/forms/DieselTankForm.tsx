@@ -13,6 +13,7 @@ import {
   saveLastDieselFill,
 } from "@/lib/dieselUtils";
 import { getDriverOptions } from "@/lib/driverStore";
+import { getVehicleNoOptions } from "@/lib/vehicleStore";
 import { FormField } from "@/components/ui/FormField";
 import { StatusMessage } from "@/components/ui/StatusMessage";
 
@@ -28,24 +29,38 @@ export function DieselTankForm() {
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [driverOptions, setDriverOptions] = useState(() => getDriverOptions());
+  const [vehicleNoOptions, setVehicleNoOptions] = useState(() => getVehicleNoOptions());
 
   useEffect(() => {
-    const sync = () => setDriverOptions(getDriverOptions());
-    window.addEventListener("sahyadri-local-update", sync);
-    return () => window.removeEventListener("sahyadri-local-update", sync);
+    const syncDrivers = () => setDriverOptions(getDriverOptions());
+    const syncVehicles = () => setVehicleNoOptions(getVehicleNoOptions());
+    window.addEventListener("sahyadri-local-update", syncDrivers);
+    window.addEventListener("sahyadri-vehicle-update", syncVehicles);
+    return () => {
+      window.removeEventListener("sahyadri-local-update", syncDrivers);
+      window.removeEventListener("sahyadri-vehicle-update", syncVehicles);
+    };
   }, []);
 
-  const fields = DIESEL_FILL_FIELDS.map((field) =>
-    field.name === "driverName"
-      ? { ...field, options: driverOptions.map((d) => d.label) }
-      : field
-  );
+  const fields = DIESEL_FILL_FIELDS.map((field) => {
+    if (field.name === "driverName") {
+      return { ...field, options: driverOptions.map((d) => d.label) };
+    }
+    if (field.name === "vehicleNo" && vehicleNoOptions.length > 0) {
+      return { ...field, type: "select" as const, options: vehicleNoOptions };
+    }
+    return field;
+  });
 
   function handleChange(name: string, value: string) {
     setValues((prev) => {
       const next = { ...prev, [name]: value };
       if (name === "vehicleNo" || name === "date") {
         return applyFillRef(next);
+      }
+      if (name === "driverName") {
+        const driver = driverOptions.find((d) => d.label === value);
+        next.driverId = driver?.value ?? "";
       }
       return next;
     });

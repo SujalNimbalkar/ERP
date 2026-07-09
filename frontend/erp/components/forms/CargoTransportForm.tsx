@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FieldConfig, FieldSection, SheetType } from "@/lib/types";
 import { submitToSheet } from "@/lib/api";
 import {
@@ -13,6 +13,7 @@ import {
 } from "@/lib/sheetConfig";
 import { calcCargoTransportByWeight } from "@/lib/materialMaster";
 import { findMaterialByCodeAll } from "@/lib/materialStore";
+import { getVehicleNoOptions } from "@/lib/vehicleStore";
 import {
   findLatestDieselFillByVehicle,
   listDieselFillsByVehicle,
@@ -184,7 +185,6 @@ function buildCargoPayloads(
         ...values,
         documentNo: invoice.documentNo,
         date: invoice.date,
-        materialType: line.materialDescription,
         materialCode: line.materialCode,
         materialDescription: line.materialDescription,
         hsnCode: line.hsnCode,
@@ -239,14 +239,27 @@ export function CargoTransportForm() {
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [vehicleNoOptions, setVehicleNoOptions] = useState(() => getVehicleNoOptions());
+
+  useEffect(() => {
+    const sync = () => setVehicleNoOptions(getVehicleNoOptions());
+    window.addEventListener("sahyadri-vehicle-update", sync);
+    return () => window.removeEventListener("sahyadri-vehicle-update", sync);
+  }, []);
 
   const tripSections = useMemo(
     () =>
       TRIP_DETAIL_SECTIONS.map((section) => ({
         ...section,
-        fields: section.fields.map((f) => resolveFieldConfig(f, activeSource.type)),
+        fields: section.fields.map((f) => {
+          const resolved = resolveFieldConfig(f, activeSource.type);
+          if (f.name === "vehicleNo" && vehicleNoOptions.length > 0) {
+            return { ...resolved, type: "select" as const, options: vehicleNoOptions };
+          }
+          return resolved;
+        }),
       })),
-    [activeSource.type]
+    [activeSource.type, vehicleNoOptions]
   );
 
   const tripFields = useMemo(() => tripSections.flatMap((s) => s.fields), [tripSections]);

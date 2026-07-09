@@ -21,13 +21,15 @@ const SHEET_MAP = {
   salary: 'Salary',
   ledger: 'Ledger',
   materials: 'Material Master',
+  'vehicle-master': 'Vehicle Master',
+  'vehicle-maintenance': 'Vehicle Maintenance',
 };
 
 const CARGO_COLUMNS = [
   'documentNo', 'date',
   'fromLocation', 'toParty',
   'vehicleNo', 'lrNo',
-  'materialType', 'materialCode', 'materialDescription', 'hsnCode',
+  'materialCode', 'materialDescription', 'hsnCode',
   'quantity', 'uom', 'perPartWt', 'totalWt',
   'transportRate', 'transportAmount', 'rateTier',
   'dieselFillRef', 'dieselUsedThisTrip', 'tollOverloadAmount',
@@ -52,7 +54,7 @@ const COLUMN_ORDER = {
   ],
   diesel: [
     'fillRef', 'date', 'vehicleNo', 'fillAmount', 'liters',
-    'driverName', 'expectedTrips', 'note',
+    'driverId', 'driverName', 'expectedTrips', 'note',
   ],
   drivers: [
     'driverId', 'firstName', 'middleName', 'surname',
@@ -68,6 +70,23 @@ const COLUMN_ORDER = {
   materials: [
     'id', 'code', 'name', 'weightPerPieceKg', 'ratePerKg', 'addedAt',
   ],
+  'vehicle-master': [
+    'id', 'registrationNo', 'engineNo', 'chassisNo',
+    'vehicleType', 'makeModel', 'manufacturer', 'yearOfManufacture',
+    'loadCapacityKg', 'fuelType', 'ownershipType', 'ownerName',
+    'assignedDriverId', 'assignedDriverName',
+    'insurancePolicyNo', 'insuranceCompany', 'insuranceValidUpto',
+    'fitnessValidUpto', 'pucValidUpto', 'roadTaxValidUpto',
+    'permitType', 'permitValidUpto', 'rtoPassingDate',
+    'notes', 'addedAt',
+  ],
+  'vehicle-maintenance': [
+    'id', 'vehicleId', 'vehicleNo', 'date', 'maintenanceType',
+    'partName', 'partNumber', 'description', 'vendorName', 'invoiceNo',
+    'labourCost', 'partsCost', 'totalCost',
+    'odometerKm', 'nextServiceKm', 'nextServiceDate',
+    'doneBy', 'remarks', 'addedAt',
+  ],
 };
 
 function doGet() {
@@ -82,20 +101,42 @@ function doPost(e) {
 
     const payload = JSON.parse(e.postData.contents);
     const type = payload.type;
+    const action = payload.action || 'append';
 
     if (!type || !SHEET_MAP[type]) {
       throw new Error('Unknown type: ' + type);
     }
 
     const tabName = SHEET_MAP[type];
-    const records = payload.records && payload.records.length
-      ? payload.records
-      : [payload.data || {}];
-
     const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(tabName);
     if (!sheet) {
       throw new Error('Sheet tab not found: ' + tabName);
     }
+
+    if (action === 'delete') {
+      const rowNum = findRowById(sheet, payload.id);
+      if (rowNum > 0) sheet.deleteRow(rowNum);
+      return jsonResponse({ success: true, message: 'Deleted from ' + tabName });
+    }
+
+    if (action === 'upsert') {
+      const data = payload.data || {};
+      const idKey = COLUMN_ORDER[type][0];
+      const id = data[idKey];
+      const row = buildRow(type, data);
+      const rowNum = findRowById(sheet, id);
+      if (rowNum > 0) {
+        sheet.getRange(rowNum, 1, 1, row.length).setValues([row]);
+      } else {
+        sheet.appendRow(row);
+      }
+      return jsonResponse({ success: true, message: 'Upserted in ' + tabName });
+    }
+
+    // Default: append
+    const records = payload.records && payload.records.length
+      ? payload.records
+      : [payload.data || {}];
 
     const rows = records.map(function (record) {
       return buildRow(type, record);
@@ -120,6 +161,17 @@ function doPost(e) {
       message: err.message || String(err),
     });
   }
+}
+
+function findRowById(sheet, id) {
+  if (id === undefined || id === null || id === '') return -1;
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 1) return -1;
+  var values = sheet.getRange(1, 1, lastRow, 1).getValues();
+  for (var i = 0; i < values.length; i++) {
+    if (String(values[i][0]) === String(id)) return i + 1;
+  }
+  return -1;
 }
 
 function buildRow(type, data) {

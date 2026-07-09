@@ -10,7 +10,7 @@ import {
   recordsToCsv,
   searchRecords,
 } from "@/lib/recordColumns";
-import { isLocalStorageMode, storageModeLabel } from "@/lib/storageMode";
+import { storageModeLabel } from "@/lib/storageMode";
 import { appendAuditEntry, getAuditLog } from "@/lib/auditLog";
 import type { AuditEntry } from "@/lib/auditLog";
 import type { LocalRecord } from "@/lib/types";
@@ -156,7 +156,6 @@ export function RecordsView() {
         <p className="mt-1 text-sm text-black">
           View saved entries in table form. Storage:{" "}
           <span className="font-semibold">{storageModeLabel()}</span>
-          {isLocalStorageMode() && " — showing data saved in this browser."}
         </p>
       </div>
 

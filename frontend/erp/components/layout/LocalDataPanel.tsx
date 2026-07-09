@@ -7,7 +7,7 @@ import {
   downloadLocalRecords,
   getLocalRecords,
 } from "@/lib/localStore";
-import { isLocalStorageMode, storageModeLabel } from "@/lib/storageMode";
+import { storageModeLabel } from "@/lib/storageMode";
 
 function formatDate(iso: string) {
   try {
@@ -58,18 +58,14 @@ export function LocalDataPanel() {
         <p className="text-xs text-black">
           Storage: <span className="font-semibold">{storageModeLabel()}</span>
         </p>
-        {isLocalStorageMode() && (
-          <>
-            <p className="mt-1 text-xs text-black">{records.length} record(s) saved</p>
-            <button
-              type="button"
-              onClick={() => setOpen(true)}
-              className="mt-2 w-full border border-black px-2 py-1.5 text-left text-xs text-black"
-            >
-              Export JSON (backup)
-            </button>
-          </>
-        )}
+        <p className="mt-1 text-xs text-black">{records.length} record(s) saved locally</p>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="mt-2 w-full border border-black px-2 py-1.5 text-left text-xs text-black"
+        >
+          Export JSON (backup)
+        </button>
       </div>
     );
   }

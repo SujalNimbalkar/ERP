@@ -10,9 +10,10 @@ import {
 } from "@/components/forms/ModuleForms";
 import { DieselTankForm } from "@/components/forms/DieselTankForm";
 import { MaterialMasterModule } from "@/components/forms/MaterialMasterModule";
+import { VehicleModule } from "@/components/forms/VehicleModule";
 import { RecordsView } from "@/components/views/RecordsView";
 import { LocalDataPanel } from "@/components/layout/LocalDataPanel";
-import { isLocalStorageMode } from "@/lib/storageMode";
+import { hasCloudSync } from "@/lib/storageMode";
 
 const FORM_MAP: Record<string, React.ReactNode> = {
   cargo: <CargoTransportForm />,
@@ -21,6 +22,7 @@ const FORM_MAP: Record<string, React.ReactNode> = {
   drivers: <DriversModule />,
   ledger: <CustomerLedgerForm />,
   materials: <MaterialMasterModule />,
+  vehicles: <VehicleModule />,
   records: <RecordsView />,
 };
 
@@ -54,7 +56,7 @@ export function AppShell() {
       </aside>
 
       <main className="flex-1 overflow-y-auto bg-white p-6 md:p-8">
-        {isLocalStorageMode() && activeModule !== "records" && (
+        {!hasCloudSync() && activeModule !== "records" && (
           <p className="mb-4 border border-black px-4 py-2 text-sm text-black">
             Data is saved in this browser only. Open{" "}
             <button
