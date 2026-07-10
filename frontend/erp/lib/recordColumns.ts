@@ -32,6 +32,8 @@ const META_COLUMNS: RecordColumn[] = [
   { key: "_sheet", label: "Sheet / Tab" },
 ];
 
+const ID_COLUMN: RecordColumn = { key: "id", label: "ID" };
+
 export const RECORD_VIEWS: RecordViewConfig[] = [
   {
     id: "cargo",
@@ -39,6 +41,7 @@ export const RECORD_VIEWS: RecordViewConfig[] = [
     types: [...CARGO_TYPES],
     columns: [
       ...META_COLUMNS,
+      ID_COLUMN,
       ...columnsFromFields(CARGO_FIELDS),
     ],
   },
@@ -46,13 +49,13 @@ export const RECORD_VIEWS: RecordViewConfig[] = [
     id: "infra",
     label: "Infra & Crusher",
     types: ["infra"],
-    columns: [...META_COLUMNS, ...columnsFromFields(INFRA_FIELDS)],
+    columns: [...META_COLUMNS, ID_COLUMN, ...columnsFromFields(INFRA_FIELDS)],
   },
   {
     id: "diesel",
     label: "Diesel Tank",
     types: ["diesel"],
-    columns: [...META_COLUMNS, ...columnsFromFields(DIESEL_FILL_FIELDS)],
+    columns: [...META_COLUMNS, ID_COLUMN, ...columnsFromFields(DIESEL_FILL_FIELDS)],
   },
   {
     id: "drivers",
@@ -64,13 +67,13 @@ export const RECORD_VIEWS: RecordViewConfig[] = [
     id: "salary",
     label: "Driver Salaries",
     types: ["salary"],
-    columns: [...META_COLUMNS, ...columnsFromFields(SALARY_FIELDS)],
+    columns: [...META_COLUMNS, ID_COLUMN, ...columnsFromFields(SALARY_FIELDS)],
   },
   {
     id: "ledger",
     label: "Customer Ledger",
     types: ["ledger"],
-    columns: [...META_COLUMNS, ...columnsFromFields(LEDGER_FIELDS)],
+    columns: [...META_COLUMNS, ID_COLUMN, ...columnsFromFields(LEDGER_FIELDS)],
   },
 ];
 

@@ -1,4 +1,4 @@
-import type { FieldConfig, FieldSection, ModuleConfig } from "./types";
+import type { FieldConfig, FieldSection, ModuleConfig, SheetType } from "./types";
 
 export const MODULES: ModuleConfig[] = [
   {
@@ -549,6 +549,11 @@ export const LEDGER_FIELDS: FieldConfig[] = [
   { name: "debit", label: "Debit (Dr)", type: "number", step: "0.01" },
   { name: "credit", label: "Credit (Cr)", type: "number", step: "0.01" },
 ];
+
+/** Which key in a record's data holds its Sheet-row identity. */
+export function getRecordIdKey(type: SheetType): string {
+  return type === "drivers" ? "driverId" : "id";
+}
 
 export function emptyValues(fields: FieldConfig[]): Record<string, string> {
   return Object.fromEntries(fields.map((f) => [f.name, ""]));

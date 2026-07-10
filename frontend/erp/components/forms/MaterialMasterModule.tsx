@@ -12,6 +12,9 @@ import {
   saveCustomMaterial,
   type CustomMaterialEntry,
 } from "@/lib/materialStore";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Toast } from "@/components/ui/Toast";
+import { useConfirmSave } from "@/components/ui/useConfirmSave";
 
 const TABS = [
   { id: "browse", label: "Browse All" },
@@ -53,6 +56,8 @@ export function MaterialMasterModule() {
   const [ratePerKg, setRatePerKg] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle");
   const [saveMsg, setSaveMsg] = useState("");
+  const { confirmOpen, requestConfirm, confirmSave, cancel, toast, notify, dismissToast } =
+    useConfirmSave();
 
   function refresh() {
     setMaterials(getAllMaterials());
@@ -104,10 +109,14 @@ export function MaterialMasterModule() {
       return;
     }
 
-    const weightNum = editing.weight.trim() ? Number(editing.weight.trim()) : undefined;
-    const rateNum = editing.ratePerKg.trim() ? Number(editing.ratePerKg.trim()) : undefined;
+    requestConfirm(() => performSaveEdit(editing, trimCode, trimName));
+  }
 
-    if (editing.isBuiltIn) {
+  function performSaveEdit(current: EditState, trimCode: string, trimName: string) {
+    const weightNum = current.weight.trim() ? Number(current.weight.trim()) : undefined;
+    const rateNum = current.ratePerKg.trim() ? Number(current.ratePerKg.trim()) : undefined;
+
+    if (current.isBuiltIn) {
       // Save as a custom override — same code shadows the built-in via findMaterialByCodeAll
       saveCustomMaterial({
         id: `custom-${trimCode}-${Date.now()}`,
@@ -119,7 +128,7 @@ export function MaterialMasterModule() {
     } else {
       // Update existing custom entry in place
       saveCustomMaterial({
-        id: editing.id,
+        id: current.id,
         code: trimCode,
         name: trimName,
         weightPerPieceKg: weightNum && weightNum > 0 ? weightNum : undefined,
@@ -130,12 +139,32 @@ export function MaterialMasterModule() {
     setEditing(null);
     setEditError("");
     refresh();
+    notify(`Material "${trimName}" (${trimCode}) updated.`);
   }
 
   function handleDelete(id: string) {
     if (!confirm("Remove this custom material from the master list?")) return;
     deleteCustomMaterial(id);
     refresh();
+  }
+
+  function performAdd(trimCode: string, trimName: string) {
+    const weightNum = weight.trim() ? Number(weight.trim()) : undefined;
+    const rateNum = ratePerKg.trim() ? Number(ratePerKg.trim()) : undefined;
+    saveCustomMaterial({
+      id: `custom-${trimCode}-${Date.now()}`,
+      code: trimCode,
+      name: trimName,
+      weightPerPieceKg: weightNum && weightNum > 0 ? weightNum : undefined,
+      ratePerKg: rateNum && rateNum > 0 ? rateNum : undefined,
+    });
+
+    setCode("");
+    setName("");
+    setWeight("");
+    setRatePerKg("");
+    refresh();
+    notify(`Material "${trimName}" (${trimCode}) added to master list.`);
   }
 
   function handleAdd(e: React.SyntheticEvent<HTMLFormElement>) {
@@ -160,23 +189,9 @@ export function MaterialMasterModule() {
       return;
     }
 
-    const weightNum = weight.trim() ? Number(weight.trim()) : undefined;
-    const rateNum = ratePerKg.trim() ? Number(ratePerKg.trim()) : undefined;
-    saveCustomMaterial({
-      id: `custom-${trimCode}-${Date.now()}`,
-      code: trimCode,
-      name: trimName,
-      weightPerPieceKg: weightNum && weightNum > 0 ? weightNum : undefined,
-      ratePerKg: rateNum && rateNum > 0 ? rateNum : undefined,
-    });
-
-    setCode("");
-    setName("");
-    setWeight("");
-    setRatePerKg("");
-    setSaveStatus("success");
-    setSaveMsg(`Material "${trimName}" (${trimCode}) added to master list.`);
-    refresh();
+    setSaveStatus("idle");
+    setSaveMsg("");
+    requestConfirm(() => performAdd(trimCode, trimName));
   }
 
   return (
@@ -503,6 +518,16 @@ export function MaterialMasterModule() {
             Add to Material Master
           </button>
         </form>
+      )}
+
+      <ConfirmDialog
+        open={confirmOpen}
+        message={editing ? "Update this material?" : "Add this material to the master list?"}
+        onConfirm={confirmSave}
+        onCancel={cancel}
+      />
+      {toast && (
+        <Toast message={toast.message} type={toast.type} onClose={dismissToast} />
       )}
     </div>
   );

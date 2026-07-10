@@ -16,6 +16,9 @@ import { getDriverOptions } from "@/lib/driverStore";
 import { getVehicleNoOptions } from "@/lib/vehicleStore";
 import { FormField } from "@/components/ui/FormField";
 import { StatusMessage } from "@/components/ui/StatusMessage";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Toast } from "@/components/ui/Toast";
+import { useConfirmSave } from "@/components/ui/useConfirmSave";
 
 function applyFillRef(values: Record<string, string>): Record<string, string> {
   const fillRef = buildDieselFillRef(values.vehicleNo, values.date);
@@ -30,6 +33,8 @@ export function DieselTankForm() {
   const [submitting, setSubmitting] = useState(false);
   const [driverOptions, setDriverOptions] = useState(() => getDriverOptions());
   const [vehicleNoOptions, setVehicleNoOptions] = useState(() => getVehicleNoOptions());
+  const { confirmOpen, requestConfirm, confirmSave, cancel, toast, notify, dismissToast } =
+    useConfirmSave();
 
   useEffect(() => {
     const syncDrivers = () => setDriverOptions(getDriverOptions());
@@ -70,8 +75,7 @@ export function DieselTankForm() {
     }
   }
 
-  async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function performSave() {
     setSubmitting(true);
     setStatus("idle");
     setMessage("");
@@ -91,8 +95,7 @@ export function DieselTankForm() {
           fillAmount: withRef.fillAmount,
           date: withRef.date,
         });
-        setStatus("success");
-        setMessage(
+        notify(
           `${result.message}. Use Fill Ref "${withRef.fillRef}" on cargo trips covered by this tank.`
         );
         setValues(applyFillRef(emptyValues(DIESEL_FILL_FIELDS)));
@@ -106,6 +109,11 @@ export function DieselTankForm() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
+    e.preventDefault();
+    requestConfirm(performSave);
   }
 
   return (
@@ -153,6 +161,16 @@ export function DieselTankForm() {
           {submitting ? "Saving…" : "Save Tank Fill"}
         </button>
       </form>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        message="Save this diesel tank fill?"
+        onConfirm={confirmSave}
+        onCancel={cancel}
+      />
+      {toast && (
+        <Toast message={toast.message} type={toast.type} onClose={dismissToast} />
+      )}
     </div>
   );
 }

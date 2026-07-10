@@ -16,6 +16,9 @@ import {
   saveVehicle,
 } from "@/lib/vehicleStore";
 import { getDriverOptions, type DriverOption } from "@/lib/driverStore";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Toast } from "@/components/ui/Toast";
+import { useConfirmSave } from "@/components/ui/useConfirmSave";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -85,6 +88,8 @@ export function VehicleMasterForm() {
     emptyForm(getNextVehicleId())
   );
   const [search, setSearch] = useState("");
+  const { confirmOpen, requestConfirm, confirmSave, cancel, toast, notify, dismissToast } =
+    useConfirmSave();
 
   function refresh() {
     setVehicles(getAllVehicles());
@@ -141,9 +146,9 @@ export function VehicleMasterForm() {
     setMode("none");
   }
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  function performSave() {
     const now = new Date().toISOString();
+    const wasEditing = mode === "edit";
     const record: VehicleMasterRecord = {
       ...formValues,
       addedAt: mode === "add" ? now : (formValues.addedAt || now),
@@ -153,6 +158,12 @@ export function VehicleMasterForm() {
     setMode("none");
     setFormValues(emptyForm(getNextVehicleId()));
     refresh();
+    notify(`Vehicle ${record.registrationNo || record.id} ${wasEditing ? "updated" : "saved"}.`);
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    requestConfirm(performSave);
   }
 
   function handleDelete(v: VehicleMasterRecord) {
@@ -602,6 +613,16 @@ export function VehicleMasterForm() {
         {vehicles.length !== filtered.length ? `(of ${vehicles.length} total)` : ""}
         {" "}· Bold compliance cells = expired or expiring within 30 days
       </p>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        message={mode === "edit" ? "Update this vehicle?" : "Save this vehicle?"}
+        onConfirm={confirmSave}
+        onCancel={cancel}
+      />
+      {toast && (
+        <Toast message={toast.message} type={toast.type} onClose={dismissToast} />
+      )}
     </div>
   );
 }

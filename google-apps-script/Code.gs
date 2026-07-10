@@ -26,7 +26,7 @@ const SHEET_MAP = {
 };
 
 const CARGO_COLUMNS = [
-  'documentNo', 'date',
+  'id', 'documentNo', 'date',
   'fromLocation', 'toParty',
   'vehicleNo', 'lrNo',
   'materialCode', 'materialDescription', 'hsnCode',
@@ -44,16 +44,16 @@ const COLUMN_ORDER = {
   'cargo-minerva': CARGO_COLUMNS,
   'cargo-machine-shop': CARGO_COLUMNS,
   infra: [
-    'date', 'vehicleNo', 'crusherChallanNo', 'materialType', 'crusherRate',
+    'id', 'date', 'vehicleNo', 'crusherChallanNo', 'materialType', 'crusherRate',
     'crusherBrass', 'crusherAmount', 'diesel', 'challanNo', 'customerName',
     'qtyBrass', 'rate', 'totalAmount', 'difference',
   ],
   pallets: [
-    'date', 'dcNo', 'plant', 'toParty', 'materialCode', 'materialDescription',
+    'id', 'date', 'dcNo', 'plant', 'toParty', 'materialCode', 'materialDescription',
     'uom', 'qty', 'vehicleNo', 'lrNo', 'freightAmount', 'remarks',
   ],
   diesel: [
-    'fillRef', 'date', 'vehicleNo', 'fillAmount', 'liters',
+    'id', 'fillRef', 'date', 'vehicleNo', 'fillAmount', 'liters',
     'driverId', 'driverName', 'expectedTrips', 'note',
   ],
   drivers: [
@@ -61,11 +61,11 @@ const COLUMN_ORDER = {
     'mobileNumber', 'aadharNumber', 'accountNumber', 'totalSalary',
   ],
   salary: [
-    'driverId', 'driverName', 'paymentType', 'scheduledSalaryDate', 'paymentDate',
+    'id', 'driverId', 'driverName', 'paymentType', 'scheduledSalaryDate', 'paymentDate',
     'amount', 'reason',
   ],
   ledger: [
-    'date', 'receiptNo', 'particular', 'vehicleNo', 'rate', 'brass', 'debit', 'credit',
+    'id', 'date', 'receiptNo', 'particular', 'vehicleNo', 'rate', 'brass', 'debit', 'credit',
   ],
   materials: [
     'id', 'code', 'name', 'weightPerPieceKg', 'ratePerKg', 'addedAt',

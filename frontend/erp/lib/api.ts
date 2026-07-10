@@ -1,5 +1,5 @@
-import type { ApiResponse, MasterSyncPayload, SubmitPayload } from "./types";
-import { saveLocalRecord, saveLocalRecords } from "./localStore";
+import type { ApiResponse, LocalRecord, MasterSyncPayload, SubmitPayload } from "./types";
+import { markRecordsSynced, saveLocalRecord, saveLocalRecords } from "./localStore";
 
 const GAS_URL = process.env.NEXT_PUBLIC_GAS_WEB_APP_URL ?? "";
 
@@ -11,13 +11,20 @@ export async function submitToSheet(
 ): Promise<ApiResponse> {
   const rowCount = payload.records?.length ?? (payload.data ? 1 : 0);
 
-  // Always save locally first
+  // Always save locally first — this stamps a sequential id into the row
+  // data, which we then forward to the Sheet so both stay in sync.
   let localId = "";
+  let outgoingPayload: SubmitPayload = payload;
+  let savedIds: string[] = [];
   if (payload.records && payload.records.length > 0) {
-    saveLocalRecords(payload);
+    const saved = saveLocalRecords(payload);
+    outgoingPayload = { type: payload.type, records: saved.map((r) => r.data) };
+    savedIds = saved.map((r) => r.id);
   } else {
     const record = saveLocalRecord(payload);
     localId = record.id.slice(0, 8);
+    outgoingPayload = { type: payload.type, data: record.data };
+    savedIds = [record.id];
   }
 
   const localMsg =
@@ -37,33 +44,59 @@ export async function submitToSheet(
     const response = await fetch(GAS_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(outgoingPayload),
     });
 
     if (!response.ok) {
+      markRecordsSynced(savedIds, false);
       return {
         success: true,
-        message: localMsg + ` Sheet sync failed (${response.status}).`,
+        message: localMsg + ` Sheet sync failed (${response.status}). You can retry from Saved Records.`,
         storage: "local",
       };
     }
 
     const result = (await response.json()) as ApiResponse;
+    markRecordsSynced(savedIds, !!result.success);
     return {
       success: true,
       message: result.success
         ? rowCount > 1
           ? `Saved ${rowCount} rows to local + Sheets.`
           : "Saved to local + Google Sheets."
-        : localMsg + ` Sheet sync: ${result.message}`,
+        : localMsg + ` Sheet sync: ${result.message} You can retry from Saved Records.`,
       storage: "remote",
     };
   } catch {
+    markRecordsSynced(savedIds, false);
     return {
       success: true,
-      message: localMsg + " Sheet sync failed (network error).",
+      message: localMsg + " Sheet sync failed (network error). You can retry from Saved Records.",
       storage: "local",
     };
+  }
+}
+
+/**
+ * Retries the Sheet sync for a single previously-saved local record (e.g.
+ * one that failed while offline). Reuses the generic upsert mechanism —
+ * matches an existing Sheet row by id, or inserts if none was ever created.
+ */
+export async function retrySync(record: LocalRecord): Promise<boolean> {
+  if (typeof window === "undefined" || !GAS_URL) return false;
+  try {
+    const response = await fetch(GAS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ type: record.type, action: "upsert", data: record.data }),
+    });
+    if (!response.ok) return false;
+    const result = (await response.json()) as ApiResponse;
+    if (!result.success) return false;
+    markRecordsSynced([record.id], true);
+    return true;
+  } catch {
+    return false;
   }
 }
 

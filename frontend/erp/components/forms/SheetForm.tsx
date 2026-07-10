@@ -6,6 +6,9 @@ import { submitToSheet } from "@/lib/api";
 import { emptyValues, parseFormData } from "@/lib/sheetConfig";
 import { FormField } from "@/components/ui/FormField";
 import { StatusMessage } from "@/components/ui/StatusMessage";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Toast } from "@/components/ui/Toast";
+import { useConfirmSave } from "@/components/ui/useConfirmSave";
 
 interface SheetFormProps {
   title: string;
@@ -24,6 +27,8 @@ export function SheetForm({
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const { confirmOpen, requestConfirm, confirmSave, cancel, toast, notify, dismissToast } =
+    useConfirmSave();
 
   function handleChange(name: string, value: string) {
     setValues((prev) => ({ ...prev, [name]: value }));
@@ -33,8 +38,7 @@ export function SheetForm({
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function performSave() {
     setSubmitting(true);
     setStatus("idle");
     setMessage("");
@@ -46,8 +50,7 @@ export function SheetForm({
       });
 
       if (result.success) {
-        setStatus("success");
-        setMessage(result.message);
+        notify(result.message);
         setValues(emptyValues(fields));
       } else {
         setStatus("error");
@@ -59,6 +62,11 @@ export function SheetForm({
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    requestConfirm(performSave);
   }
 
   return (
@@ -90,6 +98,16 @@ export function SheetForm({
           {submitting ? "Saving…" : "Save to Sheet"}
         </button>
       </form>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        message={`Save this ${title} entry?`}
+        onConfirm={confirmSave}
+        onCancel={cancel}
+      />
+      {toast && (
+        <Toast message={toast.message} type={toast.type} onClose={dismissToast} />
+      )}
     </div>
   );
 }

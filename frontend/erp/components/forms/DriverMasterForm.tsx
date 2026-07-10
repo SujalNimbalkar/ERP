@@ -6,6 +6,9 @@ import { DRIVER_MASTER_FIELDS, emptyValues, parseFormData } from "@/lib/sheetCon
 import { getNextDriverId } from "@/lib/driverStore";
 import { FormField } from "@/components/ui/FormField";
 import { StatusMessage } from "@/components/ui/StatusMessage";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Toast } from "@/components/ui/Toast";
+import { useConfirmSave } from "@/components/ui/useConfirmSave";
 
 function createInitialValues() {
   return {
@@ -19,6 +22,8 @@ export function DriverMasterForm() {
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const { confirmOpen, requestConfirm, confirmSave, cancel, toast, notify, dismissToast } =
+    useConfirmSave();
 
   const fields = useMemo(() => DRIVER_MASTER_FIELDS, []);
 
@@ -30,8 +35,7 @@ export function DriverMasterForm() {
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function performSave() {
     setSubmitting(true);
     setStatus("idle");
     setMessage("");
@@ -43,8 +47,7 @@ export function DriverMasterForm() {
       });
 
       if (result.success) {
-        setStatus("success");
-        setMessage(`${result.message} Driver created with ID ${values.driverId}.`);
+        notify(`${result.message} Driver created with ID ${values.driverId}.`);
         setValues(createInitialValues());
       } else {
         setStatus("error");
@@ -56,6 +59,11 @@ export function DriverMasterForm() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    requestConfirm(performSave);
   }
 
   return (
@@ -90,6 +98,16 @@ export function DriverMasterForm() {
           {submitting ? "Saving…" : "Save Driver"}
         </button>
       </form>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        message="Save this driver?"
+        onConfirm={confirmSave}
+        onCancel={cancel}
+      />
+      {toast && (
+        <Toast message={toast.message} type={toast.type} onClose={dismissToast} />
+      )}
     </div>
   );
 }

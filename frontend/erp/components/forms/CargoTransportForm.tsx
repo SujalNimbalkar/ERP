@@ -13,6 +13,7 @@ import {
 } from "@/lib/sheetConfig";
 import { calcCargoTransportByWeight } from "@/lib/materialMaster";
 import { findMaterialByCodeAll } from "@/lib/materialStore";
+import { findRecordsByDocumentNo } from "@/lib/localStore";
 import { getVehicleNoOptions } from "@/lib/vehicleStore";
 import {
   findLatestDieselFillByVehicle,
@@ -21,6 +22,9 @@ import {
 import { FormField } from "@/components/ui/FormField";
 import { FormSection } from "@/components/ui/FormSection";
 import { StatusMessage } from "@/components/ui/StatusMessage";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Toast } from "@/components/ui/Toast";
+import { useConfirmSave } from "@/components/ui/useConfirmSave";
 
 interface MaterialLineValues {
   id: string;
@@ -200,6 +204,33 @@ function buildCargoPayloads(
   );
 }
 
+function findDuplicateDocumentNo(
+  invoices: InvoiceValues[]
+): { documentNo: string; source: string } | null {
+  const seenInThisSubmission = new Map<string, string>();
+
+  for (const invoice of invoices) {
+    const raw = invoice.documentNo.trim();
+    if (!raw) continue;
+    const key = raw.toLowerCase();
+
+    if (seenInThisSubmission.has(key)) {
+      return { documentNo: raw, source: "entered twice in this submission" };
+    }
+    seenInThisSubmission.set(key, raw);
+
+    const existing = findRecordsByDocumentNo(raw);
+    if (existing.length > 0) {
+      const sourceLabel =
+        CARGO_SOURCES.find((s) => s.type === existing[0].type)?.label ??
+        existing[0].type;
+      return { documentNo: raw, source: sourceLabel };
+    }
+  }
+
+  return null;
+}
+
 function suggestDieselFillRef(
   values: Record<string, string>,
   changedField: string
@@ -240,6 +271,8 @@ export function CargoTransportForm() {
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [vehicleNoOptions, setVehicleNoOptions] = useState(() => getVehicleNoOptions());
+  const { confirmOpen, requestConfirm, confirmSave, cancel, toast, notify, dismissToast } =
+    useConfirmSave();
 
   useEffect(() => {
     const sync = () => setVehicleNoOptions(getVehicleNoOptions());
@@ -409,11 +442,8 @@ export function CargoTransportForm() {
     setMessage("");
   }
 
-  async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function performSave() {
     setSubmitting(true);
-    setStatus("idle");
-    setMessage("");
 
     const records = buildCargoPayloads(values, invoices);
 
@@ -424,8 +454,7 @@ export function CargoTransportForm() {
       });
 
       if (result.success) {
-        setStatus("success");
-        setMessage(result.message);
+        notify(result.message);
         setValues(emptySourceValues(activeSource));
         setInvoices([createInvoice()]);
       } else {
@@ -438,6 +467,23 @@ export function CargoTransportForm() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setStatus("idle");
+    setMessage("");
+
+    const duplicate = findDuplicateDocumentNo(invoices);
+    if (duplicate) {
+      setStatus("error");
+      setMessage(
+        `Invoice / DC No "${duplicate.documentNo}" already exists (${duplicate.source}). Invoice/DC numbers cannot repeat.`
+      );
+      return;
+    }
+
+    requestConfirm(performSave);
   }
 
   return (
@@ -715,6 +761,16 @@ export function CargoTransportForm() {
           {submitting ? "Saving…" : `Save to ${activeSource.label}`}
         </button>
       </form>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        message={`Save this trip to ${activeSource.label}?`}
+        onConfirm={confirmSave}
+        onCancel={cancel}
+      />
+      {toast && (
+        <Toast message={toast.message} type={toast.type} onClose={dismissToast} />
+      )}
     </div>
   );
 }

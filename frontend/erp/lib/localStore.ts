@@ -2,6 +2,46 @@ import type { LocalRecord, SheetType, SubmitPayload } from "./types";
 
 const STORAGE_KEY = "sahyadri_erp_records";
 
+/**
+ * Sequential per-sheet id prefixes (e.g. H19-000123). `drivers` is
+ * intentionally absent — it already has a stable business id (driverId).
+ */
+const ID_PREFIXES: Partial<Record<SheetType, string>> = {
+  "cargo-h19": "H19",
+  "cargo-j14": "J14",
+  "cargo-j15-j16": "J1516",
+  "cargo-matoshri": "MTS",
+  "cargo-minerva": "MIN",
+  "cargo-machine-shop": "MCS",
+  infra: "INF",
+  pallets: "PAL",
+  diesel: "DSL",
+  salary: "SAL",
+  ledger: "LED",
+};
+
+function pad(n: number): string {
+  return String(n).padStart(6, "0");
+}
+
+function getMaxSequence(type: SheetType, prefix: string): number {
+  const match = `${prefix}-`;
+  let max = 0;
+  for (const record of getLocalRecordsByType(type)) {
+    const id = record.data.id;
+    if (typeof id !== "string" || !id.startsWith(match)) continue;
+    const n = Number(id.slice(match.length));
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+  return max;
+}
+
+function stampId(type: SheetType, row: Record<string, string | number>): Record<string, string | number> {
+  const prefix = ID_PREFIXES[type];
+  if (!prefix) return row;
+  return { ...row, id: `${prefix}-${pad(getMaxSequence(type, prefix) + 1)}` };
+}
+
 function readAll(): LocalRecord[] {
   if (typeof window === "undefined") return [];
   try {
@@ -21,7 +61,7 @@ export function saveLocalRecord(payload: SubmitPayload): LocalRecord {
   const record: LocalRecord = {
     id: crypto.randomUUID(),
     type: payload.type,
-    data: payload.data ?? {},
+    data: stampId(payload.type, payload.data ?? {}),
     savedAt: new Date().toISOString(),
   };
   const records = readAll();
@@ -36,10 +76,12 @@ export function saveLocalRecord(payload: SubmitPayload): LocalRecord {
 export function saveLocalRecords(payload: SubmitPayload): LocalRecord[] {
   const rows = payload.records ?? (payload.data ? [payload.data] : []);
   const savedAt = new Date().toISOString();
-  const batch: LocalRecord[] = rows.map((row) => ({
+  const prefix = ID_PREFIXES[payload.type];
+  const base = prefix ? getMaxSequence(payload.type, prefix) : 0;
+  const batch: LocalRecord[] = rows.map((row, index) => ({
     id: crypto.randomUUID(),
     type: payload.type,
-    data: row,
+    data: prefix ? { ...row, id: `${prefix}-${pad(base + index + 1)}` } : row,
     savedAt,
   }));
   const records = readAll();
@@ -61,6 +103,46 @@ export function getLocalRecordCount(): number {
 
 export function getLocalRecordsByType(type: SheetType): LocalRecord[] {
   return readAll().filter((r) => r.type === type);
+}
+
+/** Records whose Sheet sync was attempted and failed — safe to retry. */
+export function getPendingSyncRecords(): LocalRecord[] {
+  return readAll().filter((r) => r.synced === false);
+}
+
+export function markRecordsSynced(ids: string[], synced: boolean): void {
+  if (ids.length === 0) return;
+  const idSet = new Set(ids);
+  const records = readAll();
+  let changed = false;
+  const updated = records.map((r) => {
+    if (!idSet.has(r.id)) return r;
+    changed = true;
+    return { ...r, synced };
+  });
+  if (!changed) return;
+  writeAll(updated);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("sahyadri-local-update"));
+  }
+}
+
+/**
+ * Finds records anywhere in local storage whose Invoice/DC No (documentNo or dcNo)
+ * matches the given value, case-insensitively. Used to enforce that invoice/DC
+ * numbers are unique across the whole database, not just within one sheet.
+ */
+export function findRecordsByDocumentNo(
+  documentNo: string,
+  excludeId?: string
+): LocalRecord[] {
+  const value = documentNo.trim().toLowerCase();
+  if (!value) return [];
+  return readAll().filter((r) => {
+    if (r.id === excludeId) return false;
+    const docNo = r.data.documentNo ?? r.data.dcNo;
+    return docNo !== undefined && String(docNo).trim().toLowerCase() === value;
+  });
 }
 
 export function clearLocalRecords() {

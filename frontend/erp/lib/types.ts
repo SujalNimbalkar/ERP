@@ -54,7 +54,7 @@ export interface ApiResponse {
 export type MasterType = "vehicle-master" | "vehicle-maintenance" | "materials";
 
 export interface MasterSyncPayload {
-  type: MasterType;
+  type: MasterType | SheetType;
   action: "upsert" | "delete";
   data?: Record<string, unknown>;
   id?: string;
@@ -65,6 +65,12 @@ export interface LocalRecord {
   type: SheetType;
   data: Record<string, string | number>;
   savedAt: string;
+  /**
+   * Whether this record's Sheet sync is confirmed. `undefined` = cloud sync
+   * wasn't configured when it was saved (nothing to retry); `false` = a Sheet
+   * POST was attempted and failed (retryable); `true` = confirmed synced.
+   */
+  synced?: boolean;
 }
 
 export type FormValues = Record<string, string>;

@@ -13,6 +13,9 @@ import {
   getVehicleOptions,
   saveMaintenance,
 } from "@/lib/vehicleStore";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Toast } from "@/components/ui/Toast";
+import { useConfirmSave } from "@/components/ui/useConfirmSave";
 
 const FIELD_CLASS =
   "w-full border border-black bg-white px-3 py-2 text-sm text-black outline-none";
@@ -74,6 +77,8 @@ export function VehicleMaintenanceForm() {
   const [formValues, setFormValues] = useState<VehicleMaintenanceRecord>(() =>
     emptyForm(getNextMaintenanceId())
   );
+  const { confirmOpen, requestConfirm, confirmSave, cancel, toast, notify, dismissToast } =
+    useConfirmSave();
 
   function refresh() {
     setVehicleOptions(getVehicleOptions());
@@ -136,8 +141,8 @@ export function VehicleMaintenanceForm() {
     setMode("none");
   }
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  function performSave() {
+    const wasEditing = mode === "edit";
     const record: VehicleMaintenanceRecord = {
       ...formValues,
       addedAt: mode === "add" ? new Date().toISOString() : formValues.addedAt,
@@ -145,6 +150,12 @@ export function VehicleMaintenanceForm() {
     saveMaintenance(record);
     setMode("none");
     refresh();
+    notify(`Maintenance record ${wasEditing ? "updated" : "saved"}.`);
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    requestConfirm(performSave);
   }
 
   function handleDelete(m: VehicleMaintenanceRecord) {
@@ -530,6 +541,16 @@ export function VehicleMaintenanceForm() {
         Showing {displayedRecords.length} record(s)
         {filterVehicleId && summary ? ` · ${fmtCost(summary.total)} total maintenance cost` : ""}
       </p>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        message={mode === "edit" ? "Update this maintenance record?" : "Save this maintenance record?"}
+        onConfirm={confirmSave}
+        onCancel={cancel}
+      />
+      {toast && (
+        <Toast message={toast.message} type={toast.type} onClose={dismissToast} />
+      )}
     </div>
   );
 }

@@ -12,6 +12,9 @@ import { findDriverById, getDriverOptions } from "@/lib/driverStore";
 import type { FieldConfig } from "@/lib/types";
 import { FormField } from "@/components/ui/FormField";
 import { StatusMessage } from "@/components/ui/StatusMessage";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Toast } from "@/components/ui/Toast";
+import { useConfirmSave } from "@/components/ui/useConfirmSave";
 
 function visibleSalaryFields(paymentType: string, driverOptions: string[]): FieldConfig[] {
   return SALARY_FIELDS.filter((field) => {
@@ -56,6 +59,8 @@ export function DriverSalaryForm() {
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [driverOptions, setDriverOptions] = useState(() => getDriverOptions());
+  const { confirmOpen, requestConfirm, confirmSave, cancel, toast, notify, dismissToast } =
+    useConfirmSave();
 
   const paymentType = values.paymentType;
   const fields = visibleSalaryFields(
@@ -104,7 +109,34 @@ export function DriverSalaryForm() {
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function performSave() {
+    setSubmitting(true);
+    setStatus("idle");
+    setMessage("");
+
+    try {
+      const result = await submitToSheet({
+        type: "salary",
+        data: parseFormData(values),
+      });
+
+      if (result.success) {
+        notify(result.message);
+        setValues(emptyValues(SALARY_FIELDS));
+        setDriverOptions(getDriverOptions());
+      } else {
+        setStatus("error");
+        setMessage(result.message);
+      }
+    } catch {
+      setStatus("error");
+      setMessage("Network error. Check your connection and Web App URL.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
     if (
@@ -125,31 +157,7 @@ export function DriverSalaryForm() {
       return;
     }
 
-    setSubmitting(true);
-    setStatus("idle");
-    setMessage("");
-
-    try {
-      const result = await submitToSheet({
-        type: "salary",
-        data: parseFormData(values),
-      });
-
-      if (result.success) {
-        setStatus("success");
-        setMessage(result.message);
-        setValues(emptyValues(SALARY_FIELDS));
-        setDriverOptions(getDriverOptions());
-      } else {
-        setStatus("error");
-        setMessage(result.message);
-      }
-    } catch {
-      setStatus("error");
-      setMessage("Network error. Check your connection and Web App URL.");
-    } finally {
-      setSubmitting(false);
-    }
+    requestConfirm(performSave);
   }
 
   return (
@@ -194,6 +202,16 @@ export function DriverSalaryForm() {
           {submitting ? "Saving…" : "Save to Salary Sheet"}
         </button>
       </form>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        message="Save this salary entry?"
+        onConfirm={confirmSave}
+        onCancel={cancel}
+      />
+      {toast && (
+        <Toast message={toast.message} type={toast.type} onClose={dismissToast} />
+      )}
     </div>
   );
 }

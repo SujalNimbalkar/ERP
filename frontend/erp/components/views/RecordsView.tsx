@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { deleteLocalRecord, getLocalRecords, updateLocalRecord } from "@/lib/localStore";
+import { retrySync, syncMasterRecord } from "@/lib/api";
+import { getRecordIdKey } from "@/lib/sheetConfig";
 import {
   RECORD_VIEWS,
   downloadCsv,
@@ -10,10 +12,13 @@ import {
   recordsToCsv,
   searchRecords,
 } from "@/lib/recordColumns";
-import { storageModeLabel } from "@/lib/storageMode";
+import { hasCloudSync, storageModeLabel } from "@/lib/storageMode";
 import { appendAuditEntry, getAuditLog } from "@/lib/auditLog";
 import type { AuditEntry } from "@/lib/auditLog";
 import type { LocalRecord } from "@/lib/types";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Toast } from "@/components/ui/Toast";
+import { useConfirmSave } from "@/components/ui/useConfirmSave";
 
 const AUDIT_TAB = "__audit__";
 
@@ -39,6 +44,10 @@ export function RecordsView() {
   const [editing, setEditing] = useState<EditState | null>(null);
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
   const [auditSearch, setAuditSearch] = useState("");
+  const [retryingIds, setRetryingIds] = useState<Set<string>>(new Set());
+  const [bulkRetrying, setBulkRetrying] = useState(false);
+  const { confirmOpen, requestConfirm, confirmSave, cancel, toast, notify, dismissToast } =
+    useConfirmSave();
 
   const isAuditTab = activeViewId === AUDIT_TAB;
   const activeView = RECORD_VIEWS.find((v) => v.id === activeViewId) ?? RECORD_VIEWS[0];
@@ -68,6 +77,8 @@ export function RecordsView() {
     return searchRecords(filterRecordsForView(records, activeView), search);
   }, [records, activeView, search, isAuditTab]);
 
+  const pendingRecords = useMemo(() => records.filter((r) => r.synced === false), [records]);
+
   const filteredAudit = useMemo(() => {
     const q = auditSearch.trim().toLowerCase();
     if (!q) return auditLog;
@@ -86,11 +97,14 @@ export function RecordsView() {
 
   const editFieldOrder = useMemo(() => {
     if (!editing) return [];
+    const idKey = getRecordIdKey(editing.record.type);
     const viewKeys = activeView.columns
-      .filter((c) => !c.key.startsWith("_"))
+      .filter((c) => !c.key.startsWith("_") && c.key !== idKey)
       .map((c) => c.key)
       .filter((k) => k in editing.draft);
-    const extra = Object.keys(editing.draft).filter((k) => !viewKeys.includes(k));
+    const extra = Object.keys(editing.draft).filter(
+      (k) => !viewKeys.includes(k) && k !== idKey
+    );
     return [...viewKeys, ...extra];
   }, [editing, activeView]);
 
@@ -118,7 +132,7 @@ export function RecordsView() {
     setEditing(null);
   }
 
-  function saveEdit() {
+  function performSaveEdit() {
     if (!editing) return;
     const newData = parseEditedData(editing.draft);
     appendAuditEntry({
@@ -129,8 +143,23 @@ export function RecordsView() {
       after: newData,
     });
     updateLocalRecord(editing.record.id, newData);
+
+    // Legacy records saved before ID tracking have no id — skip the remote
+    // upsert for them, since Code.gs would append a duplicate row instead of
+    // updating in place when it can't match an existing one.
+    const sheetId = newData[getRecordIdKey(editing.record.type)];
+    if (sheetId !== undefined && sheetId !== "") {
+      void syncMasterRecord({ type: editing.record.type, action: "upsert", data: newData });
+    }
+
     setEditing(null);
     refreshAudit();
+    notify("Record updated.");
+  }
+
+  function saveEdit() {
+    if (!editing) return;
+    requestConfirm(performSaveEdit);
   }
 
   function handleDelete(record: LocalRecord) {
@@ -145,8 +174,48 @@ export function RecordsView() {
       before: record.data,
     });
     deleteLocalRecord(record.id);
+
+    const sheetId = record.data[getRecordIdKey(record.type)];
+    if (sheetId !== undefined && sheetId !== "") {
+      void syncMasterRecord({ type: record.type, action: "delete", id: String(sheetId) });
+    }
+
     if (editing?.record.id === record.id) setEditing(null);
     refreshAudit();
+  }
+
+  async function retryOne(record: LocalRecord) {
+    setRetryingIds((prev) => new Set(prev).add(record.id));
+    try {
+      const ok = await retrySync(record);
+      notify(ok ? "Synced to Google Sheets." : "Still can't reach Google Sheets — try again later.", ok ? "success" : "error");
+      if (ok) refresh();
+    } finally {
+      setRetryingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(record.id);
+        return next;
+      });
+    }
+  }
+
+  async function retryAllPending() {
+    const targets = pendingRecords;
+    if (targets.length === 0) return;
+    setBulkRetrying(true);
+    try {
+      const results = await Promise.all(targets.map((r) => retrySync(r)));
+      const succeeded = results.filter(Boolean).length;
+      notify(
+        succeeded === targets.length
+          ? `Synced ${succeeded} record(s) to Google Sheets.`
+          : `Synced ${succeeded} of ${targets.length} — the rest are still unreachable.`,
+        succeeded === targets.length ? "success" : "error"
+      );
+      refresh();
+    } finally {
+      setBulkRetrying(false);
+    }
   }
 
   return (
@@ -290,6 +359,16 @@ export function RecordsView() {
             >
               Refresh
             </button>
+            {hasCloudSync() && pendingRecords.length > 0 && (
+              <button
+                type="button"
+                onClick={retryAllPending}
+                disabled={bulkRetrying}
+                className="border border-black bg-white px-4 py-2 text-sm font-medium text-black disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {bulkRetrying ? "Syncing…" : `Sync Pending (${pendingRecords.length})`}
+              </button>
+            )}
           </div>
 
           {editing && (
@@ -392,6 +471,17 @@ export function RecordsView() {
                             >
                               Delete
                             </button>
+                            {hasCloudSync() && record.synced === false && (
+                              <button
+                                type="button"
+                                onClick={() => retryOne(record)}
+                                disabled={retryingIds.has(record.id)}
+                                title="Sheet sync failed for this record — retry"
+                                className="text-black underline disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {retryingIds.has(record.id) ? "Syncing…" : "⚠ Retry Sync"}
+                              </button>
+                            )}
                           </div>
                         </td>
                         {activeView.columns.map((col) => {
@@ -418,6 +508,16 @@ export function RecordsView() {
             Showing {filteredRecords.length} row(s) · {activeView.columns.length} columns
           </p>
         </>
+      )}
+
+      <ConfirmDialog
+        open={confirmOpen}
+        message="Save these changes to the record?"
+        onConfirm={confirmSave}
+        onCancel={cancel}
+      />
+      {toast && (
+        <Toast message={toast.message} type={toast.type} onClose={dismissToast} />
       )}
     </div>
   );
