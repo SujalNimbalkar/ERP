@@ -18,3 +18,27 @@ textarea,
 button {
   color: #000000;
 }
+
+/* Bill printing — show only the bill pages, one invoice page per sheet */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .bill-print-area,
+  .bill-print-area * {
+    visibility: visible;
+  }
+  .bill-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+  .bill-page {
+    page-break-after: always;
+    margin-top: 0 !important;
+  }
+  .bill-page:last-child {
+    page-break-after: auto;
+  }
+}

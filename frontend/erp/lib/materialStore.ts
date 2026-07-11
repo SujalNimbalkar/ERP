@@ -30,6 +30,28 @@ export function getCustomMaterials(): CustomMaterialEntry[] {
   return readCustom();
 }
 
+/** Replaces the custom-material cache with rows fetched from Google Sheets. */
+export function replaceWithSheetMaterials(rows: Record<string, unknown>[]): void {
+  const entries: CustomMaterialEntry[] = rows
+    .filter((row) => row.id && row.code)
+    .map((row) => ({
+      id: String(row.id),
+      code: String(row.code),
+      name: String(row.name ?? ""),
+      weightPerPieceKg:
+        row.weightPerPieceKg === "" || row.weightPerPieceKg === undefined || row.weightPerPieceKg === null
+          ? undefined
+          : Number(row.weightPerPieceKg),
+      ratePerKg:
+        row.ratePerKg === "" || row.ratePerKg === undefined || row.ratePerKg === null
+          ? undefined
+          : Number(row.ratePerKg),
+      isCustom: true,
+      addedAt: String(row.addedAt ?? new Date().toISOString()),
+    }));
+  writeCustom(entries);
+}
+
 export function getAllMaterials(): (MaterialMasterEntry | CustomMaterialEntry)[] {
   return [...MATERIAL_MASTER, ...readCustom()];
 }

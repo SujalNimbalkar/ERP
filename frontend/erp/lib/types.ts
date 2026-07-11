@@ -20,8 +20,10 @@ export interface FieldConfig {
   type: FieldType;
   required?: boolean;
   placeholder?: string;
-  options?: string[];
+  options?: Array<string | { value: string; label: string }>;
   step?: string;
+  min?: string;
+  max?: string;
   colSpan?: 1 | 2;
   readOnly?: boolean;
 }
@@ -51,7 +53,7 @@ export interface ApiResponse {
   storage?: "local" | "remote";
 }
 
-export type MasterType = "vehicle-master" | "vehicle-maintenance" | "materials";
+export type MasterType = "vehicle-master" | "vehicle-maintenance" | "materials" | "bills";
 
 export interface MasterSyncPayload {
   type: MasterType | SheetType;

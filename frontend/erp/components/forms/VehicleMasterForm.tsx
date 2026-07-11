@@ -2,20 +2,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  FUEL_TYPES,
-  MANUFACTURERS,
-  OWNERSHIP_TYPES,
-  PERMIT_TYPES,
   VEHICLE_COMPLIANCE_FIELDS,
-  VEHICLE_TYPES,
+  VEHICLE_MASTER_SECTIONS,
   type VehicleMasterRecord,
   deleteVehicle,
   getAllVehicles,
   getComplianceDaysLeft,
   getNextVehicleId,
+  injectFieldOptions,
   saveVehicle,
 } from "@/lib/vehicleStore";
 import { getDriverOptions, type DriverOption } from "@/lib/driverStore";
+import { FormField } from "@/components/ui/FormField";
+import { FormSection } from "@/components/ui/FormSection";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Toast } from "@/components/ui/Toast";
 import { useConfirmSave } from "@/components/ui/useConfirmSave";
@@ -54,27 +53,6 @@ function nearestExpiry(v: VehicleMasterRecord): number {
     ...VEHICLE_COMPLIANCE_FIELDS.map(({ key }) =>
       getComplianceDaysLeft(v[key] as string)
     )
-  );
-}
-
-const FIELD_CLASS =
-  "w-full border border-black bg-white px-3 py-2 text-sm text-black outline-none";
-
-// ── sub-renders ───────────────────────────────────────────────────────────────
-
-interface FieldProps {
-  label: string;
-  children: React.ReactNode;
-  required?: boolean;
-}
-function Field({ label, children, required }: FieldProps) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-xs font-medium text-black">
-        {label}{required && " *"}
-      </label>
-      {children}
-    </div>
   );
 }
 
@@ -118,10 +96,17 @@ export function VehicleMasterForm() {
     );
   }, [vehicles, search]);
 
-  function handleChange(
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
-  ) {
-    const { name, value } = e.target;
+  const sections = useMemo(
+    () =>
+      injectFieldOptions(
+        VEHICLE_MASTER_SECTIONS,
+        "assignedDriverId",
+        driverOptions.map((d) => ({ value: d.value, label: d.label }))
+      ),
+    [driverOptions]
+  );
+
+  function handleChange(name: string, value: string) {
     setFormValues((prev) => {
       const next = { ...prev, [name]: value };
       if (name === "assignedDriverId") {
@@ -236,288 +221,30 @@ export function VehicleMasterForm() {
           </div>
 
           {/* Vehicle ID (readonly) */}
-          <div>
-            <Field label="Vehicle ID (auto)">
-              <input
-                type="text"
-                value={formValues.id}
-                readOnly
-                className={FIELD_CLASS + " w-40 bg-white"}
-              />
-            </Field>
+          <div className="w-40">
+            <FormField
+              field={{ name: "id", label: "Vehicle ID (auto)", type: "text", readOnly: true }}
+              value={formValues.id}
+              onChange={() => {}}
+            />
           </div>
 
-          {/* Basic Details */}
-          <section>
-            <p className="mb-3 border-b border-black pb-1 text-xs font-semibold uppercase tracking-wide text-black">
-              Basic Details
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
-              <Field label="Registration No" required>
-                <input
-                  name="registrationNo"
-                  type="text"
-                  required
-                  value={formValues.registrationNo}
+          {sections.map((section) => (
+            <FormSection
+              key={section.id}
+              title={section.title}
+              columns={section.id === "ownership" ? 4 : section.id === "notes" ? 2 : 3}
+            >
+              {section.fields.map((field) => (
+                <FormField
+                  key={field.name}
+                  field={field}
+                  value={formValues[field.name as keyof VehicleMasterRecord] as string}
                   onChange={handleChange}
-                  placeholder="e.g. MH11CH2030"
-                  className={FIELD_CLASS}
                 />
-              </Field>
-              <Field label="Vehicle Type">
-                <select
-                  name="vehicleType"
-                  value={formValues.vehicleType}
-                  onChange={handleChange}
-                  className={FIELD_CLASS}
-                >
-                  <option value="">Select…</option>
-                  {VEHICLE_TYPES.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Make & Model">
-                <input
-                  name="makeModel"
-                  type="text"
-                  value={formValues.makeModel}
-                  onChange={handleChange}
-                  placeholder="e.g. Tata Signa 4825.T"
-                  className={FIELD_CLASS}
-                />
-              </Field>
-              <Field label="Manufacturer">
-                <select
-                  name="manufacturer"
-                  value={formValues.manufacturer}
-                  onChange={handleChange}
-                  className={FIELD_CLASS}
-                >
-                  <option value="">Select…</option>
-                  {MANUFACTURERS.map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Year of Manufacture">
-                <input
-                  name="yearOfManufacture"
-                  type="number"
-                  value={formValues.yearOfManufacture}
-                  onChange={handleChange}
-                  placeholder="e.g. 2019"
-                  min="1990"
-                  max="2099"
-                  className={FIELD_CLASS}
-                />
-              </Field>
-              <Field label="Load Capacity (kg)">
-                <input
-                  name="loadCapacityKg"
-                  type="number"
-                  step="0.01"
-                  value={formValues.loadCapacityKg}
-                  onChange={handleChange}
-                  placeholder="e.g. 9000"
-                  className={FIELD_CLASS}
-                />
-              </Field>
-              <Field label="Fuel Type">
-                <select
-                  name="fuelType"
-                  value={formValues.fuelType}
-                  onChange={handleChange}
-                  className={FIELD_CLASS}
-                >
-                  <option value="">Select…</option>
-                  {FUEL_TYPES.map((f) => (
-                    <option key={f} value={f}>{f}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Engine No">
-                <input
-                  name="engineNo"
-                  type="text"
-                  value={formValues.engineNo}
-                  onChange={handleChange}
-                  className={FIELD_CLASS}
-                />
-              </Field>
-              <Field label="Chassis No">
-                <input
-                  name="chassisNo"
-                  type="text"
-                  value={formValues.chassisNo}
-                  onChange={handleChange}
-                  className={FIELD_CLASS}
-                />
-              </Field>
-            </div>
-          </section>
-
-          {/* Ownership */}
-          <section>
-            <p className="mb-3 border-b border-black pb-1 text-xs font-semibold uppercase tracking-wide text-black">
-              Ownership
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
-              <Field label="Ownership Type">
-                <select
-                  name="ownershipType"
-                  value={formValues.ownershipType}
-                  onChange={handleChange}
-                  className={FIELD_CLASS}
-                >
-                  <option value="">Select…</option>
-                  {OWNERSHIP_TYPES.map((o) => (
-                    <option key={o} value={o}>{o}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Owner Name">
-                <input
-                  name="ownerName"
-                  type="text"
-                  value={formValues.ownerName}
-                  onChange={handleChange}
-                  placeholder="Vehicle owner / contractor"
-                  className={FIELD_CLASS}
-                />
-              </Field>
-              <Field label="Assigned Driver">
-                <select
-                  name="assignedDriverId"
-                  value={formValues.assignedDriverId}
-                  onChange={handleChange}
-                  className={FIELD_CLASS}
-                >
-                  <option value="">None / Unassigned</option>
-                  {driverOptions.map((d) => (
-                    <option key={d.value} value={d.value}>{d.label}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Driver Name (auto)">
-                <input
-                  type="text"
-                  value={formValues.assignedDriverName}
-                  readOnly
-                  className={FIELD_CLASS}
-                />
-              </Field>
-            </div>
-          </section>
-
-          {/* Compliance & Documents */}
-          <section>
-            <p className="mb-3 border-b border-black pb-1 text-xs font-semibold uppercase tracking-wide text-black">
-              Compliance &amp; Documents
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
-              <Field label="Insurance Policy No">
-                <input
-                  name="insurancePolicyNo"
-                  type="text"
-                  value={formValues.insurancePolicyNo}
-                  onChange={handleChange}
-                  className={FIELD_CLASS}
-                />
-              </Field>
-              <Field label="Insurance Company">
-                <input
-                  name="insuranceCompany"
-                  type="text"
-                  value={formValues.insuranceCompany}
-                  onChange={handleChange}
-                  className={FIELD_CLASS}
-                />
-              </Field>
-              <Field label="Insurance Valid Upto">
-                <input
-                  name="insuranceValidUpto"
-                  type="date"
-                  value={formValues.insuranceValidUpto}
-                  onChange={handleChange}
-                  className={FIELD_CLASS}
-                />
-              </Field>
-              <Field label="Fitness Valid Upto">
-                <input
-                  name="fitnessValidUpto"
-                  type="date"
-                  value={formValues.fitnessValidUpto}
-                  onChange={handleChange}
-                  className={FIELD_CLASS}
-                />
-              </Field>
-              <Field label="PUC Valid Upto">
-                <input
-                  name="pucValidUpto"
-                  type="date"
-                  value={formValues.pucValidUpto}
-                  onChange={handleChange}
-                  className={FIELD_CLASS}
-                />
-              </Field>
-              <Field label="Road Tax Valid Upto">
-                <input
-                  name="roadTaxValidUpto"
-                  type="date"
-                  value={formValues.roadTaxValidUpto}
-                  onChange={handleChange}
-                  className={FIELD_CLASS}
-                />
-              </Field>
-              <Field label="Permit Type">
-                <select
-                  name="permitType"
-                  value={formValues.permitType}
-                  onChange={handleChange}
-                  className={FIELD_CLASS}
-                >
-                  <option value="">Select…</option>
-                  {PERMIT_TYPES.map((p) => (
-                    <option key={p} value={p}>{p}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Permit Valid Upto">
-                <input
-                  name="permitValidUpto"
-                  type="date"
-                  value={formValues.permitValidUpto}
-                  onChange={handleChange}
-                  className={FIELD_CLASS}
-                />
-              </Field>
-              <Field label="RTO Passing Date">
-                <input
-                  name="rtoPassingDate"
-                  type="date"
-                  value={formValues.rtoPassingDate}
-                  onChange={handleChange}
-                  className={FIELD_CLASS}
-                />
-              </Field>
-            </div>
-          </section>
-
-          {/* Notes */}
-          <section>
-            <p className="mb-3 border-b border-black pb-1 text-xs font-semibold uppercase tracking-wide text-black">
-              Notes
-            </p>
-            <textarea
-              name="notes"
-              value={formValues.notes}
-              onChange={handleChange}
-              rows={3}
-              placeholder="Any remarks about this vehicle…"
-              className={FIELD_CLASS}
-            />
-          </section>
+              ))}
+            </FormSection>
+          ))}
         </form>
       )}
 

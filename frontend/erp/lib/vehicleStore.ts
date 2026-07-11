@@ -1,4 +1,5 @@
 import { syncMasterRecord } from "./api";
+import type { FieldConfig, FieldSection } from "./types";
 
 export interface VehicleMasterRecord {
   id: string;
@@ -97,6 +98,124 @@ export const VEHICLE_COMPLIANCE_FIELDS: Array<{
   { key: "permitValidUpto", label: "Permit" },
 ];
 
+export const VEHICLE_MASTER_SECTIONS: FieldSection[] = [
+  {
+    id: "basic",
+    title: "Basic Details",
+    fields: [
+      { name: "registrationNo", label: "Registration No", type: "text", required: true, placeholder: "e.g. MH11CH2030" },
+      { name: "vehicleType", label: "Vehicle Type", type: "select", options: [...VEHICLE_TYPES] },
+      { name: "makeModel", label: "Make & Model", type: "text", placeholder: "e.g. Tata Signa 4825.T" },
+      { name: "manufacturer", label: "Manufacturer", type: "select", options: [...MANUFACTURERS] },
+      { name: "yearOfManufacture", label: "Year of Manufacture", type: "number", placeholder: "e.g. 2019", min: "1990", max: "2099" },
+      { name: "loadCapacityKg", label: "Load Capacity (kg)", type: "number", step: "0.01", placeholder: "e.g. 9000" },
+      { name: "fuelType", label: "Fuel Type", type: "select", options: [...FUEL_TYPES] },
+      { name: "engineNo", label: "Engine No", type: "text" },
+      { name: "chassisNo", label: "Chassis No", type: "text" },
+    ],
+  },
+  {
+    id: "ownership",
+    title: "Ownership",
+    fields: [
+      { name: "ownershipType", label: "Ownership Type", type: "select", options: [...OWNERSHIP_TYPES] },
+      { name: "ownerName", label: "Owner Name", type: "text", placeholder: "Vehicle owner / contractor" },
+      { name: "assignedDriverId", label: "Assigned Driver", type: "select", options: [] },
+      { name: "assignedDriverName", label: "Driver Name (auto)", type: "text", readOnly: true },
+    ],
+  },
+  {
+    id: "compliance",
+    title: "Compliance & Documents",
+    fields: [
+      { name: "insurancePolicyNo", label: "Insurance Policy No", type: "text" },
+      { name: "insuranceCompany", label: "Insurance Company", type: "text" },
+      { name: "insuranceValidUpto", label: "Insurance Valid Upto", type: "date" },
+      { name: "fitnessValidUpto", label: "Fitness Valid Upto", type: "date" },
+      { name: "pucValidUpto", label: "PUC Valid Upto", type: "date" },
+      { name: "roadTaxValidUpto", label: "Road Tax Valid Upto", type: "date" },
+      { name: "permitType", label: "Permit Type", type: "select", options: [...PERMIT_TYPES] },
+      { name: "permitValidUpto", label: "Permit Valid Upto", type: "date" },
+      { name: "rtoPassingDate", label: "RTO Passing Date", type: "date" },
+    ],
+  },
+  {
+    id: "notes",
+    title: "Notes",
+    fields: [
+      { name: "notes", label: "Remarks", type: "textarea", placeholder: "Any remarks about this vehicle…", colSpan: 2 },
+    ],
+  },
+];
+
+export const VEHICLE_MAINTENANCE_SECTIONS: FieldSection[] = [
+  {
+    id: "vehicle-date",
+    title: "Vehicle & Date",
+    fields: [
+      { name: "vehicleId", label: "Vehicle", type: "select", required: true, options: [] },
+      { name: "vehicleNo", label: "Reg No (auto)", type: "text", readOnly: true },
+      { name: "date", label: "Date", type: "date", required: true },
+    ],
+  },
+  {
+    id: "type-description",
+    title: "Type & Description",
+    fields: [
+      { name: "maintenanceType", label: "Maintenance Type", type: "select", required: true, options: [...MAINTENANCE_TYPES] },
+      { name: "description", label: "Description", type: "text", required: true, placeholder: "Brief description of work done" },
+    ],
+  },
+  {
+    id: "parts",
+    title: "Part / Spares",
+    fields: [
+      { name: "partName", label: "Part Name", type: "text", placeholder: "e.g. Engine Oil Filter" },
+      { name: "partNumber", label: "Part Number", type: "text" },
+      { name: "vendorName", label: "Vendor / Workshop", type: "text", placeholder: "e.g. Sharma Motors" },
+      { name: "invoiceNo", label: "Invoice No", type: "text" },
+    ],
+  },
+  {
+    id: "cost",
+    title: "Cost",
+    fields: [
+      { name: "labourCost", label: "Labour Cost (Rs)", type: "number", step: "0.01" },
+      { name: "partsCost", label: "Parts Cost (Rs)", type: "number", step: "0.01" },
+      { name: "totalCost", label: "Total Cost (Rs, auto)", type: "number", step: "0.01", readOnly: true },
+    ],
+  },
+  {
+    id: "service",
+    title: "Odometer & Next Service",
+    fields: [
+      { name: "odometerKm", label: "Current Odometer (km)", type: "number", placeholder: "Reading at service" },
+      { name: "nextServiceKm", label: "Next Service (km)", type: "number", placeholder: "Due at km" },
+      { name: "nextServiceDate", label: "Next Service Date", type: "date" },
+      { name: "doneBy", label: "Done By", type: "text", placeholder: "Mechanic / driver name" },
+    ],
+  },
+  {
+    id: "remarks",
+    title: "Remarks",
+    fields: [
+      { name: "remarks", label: "Remarks", type: "textarea", placeholder: "Additional notes…", colSpan: 2 },
+    ],
+  },
+];
+
+/** Populate an options-based field (assignedDriverId, vehicleId) with live {value,label} pairs. */
+export function injectFieldOptions(
+  sections: FieldSection[],
+  fieldName: string,
+  options: { value: string; label: string }[]
+): FieldSection[] {
+  return sections.map((section) => ({
+    ...section,
+    fields: section.fields.map((f): FieldConfig => (f.name === fieldName ? { ...f, options } : f)),
+  }));
+}
+
 const VEHICLE_MASTER_KEY = "sahyadri_vehicle_master";
 const VEHICLE_MAINTENANCE_KEY = "sahyadri_vehicle_maintenance";
 
@@ -132,6 +251,24 @@ function writeMaintenance(records: VehicleMaintenanceRecord[]) {
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event("sahyadri-vehicle-update"));
   }
+}
+
+/** Replaces the local vehicle cache with rows fetched from Google Sheets. */
+export function replaceWithSheetVehicles(
+  master: Record<string, unknown>[],
+  maintenance: Record<string, unknown>[]
+): void {
+  const toStrings = <T>(row: Record<string, unknown>): T => {
+    const out: Record<string, string> = {};
+    for (const [key, value] of Object.entries(row)) {
+      out[key] = value === undefined || value === null ? "" : String(value);
+    }
+    return out as T;
+  };
+  writeMaster(master.map((row) => toStrings<VehicleMasterRecord>(row)).filter((v) => v.id));
+  writeMaintenance(
+    maintenance.map((row) => toStrings<VehicleMaintenanceRecord>(row)).filter((m) => m.id)
+  );
 }
 
 export function getNextVehicleId(): string {

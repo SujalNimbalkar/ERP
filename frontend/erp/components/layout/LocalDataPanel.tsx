@@ -7,7 +7,8 @@ import {
   downloadLocalRecords,
   getLocalRecords,
 } from "@/lib/localStore";
-import { storageModeLabel } from "@/lib/storageMode";
+import { getLastSheetFetch, refreshFromSheets } from "@/lib/sheetFetch";
+import { hasCloudSync, storageModeLabel } from "@/lib/storageMode";
 
 function formatDate(iso: string) {
   try {
@@ -26,9 +27,20 @@ function formatDate(iso: string) {
 export function LocalDataPanel() {
   const [records, setRecords] = useState<LocalRecord[]>([]);
   const [open, setOpen] = useState(false);
+  const [fetching, setFetching] = useState(false);
+  const [fetchNote, setFetchNote] = useState("");
 
   function refresh() {
     setRecords(getLocalRecords());
+  }
+
+  async function handleSheetRefresh() {
+    setFetching(true);
+    setFetchNote("");
+    const result = await refreshFromSheets();
+    setFetching(false);
+    setFetchNote(result.message);
+    refresh();
   }
 
   useEffect(() => {
@@ -58,7 +70,29 @@ export function LocalDataPanel() {
         <p className="text-xs text-black">
           Storage: <span className="font-semibold">{storageModeLabel()}</span>
         </p>
-        <p className="mt-1 text-xs text-black">{records.length} record(s) saved locally</p>
+        <p className="mt-1 text-xs text-black">
+          {hasCloudSync()
+            ? `${records.length} record(s) from Google Sheets`
+            : `${records.length} record(s) saved locally`}
+        </p>
+        {hasCloudSync() && (
+          <>
+            <button
+              type="button"
+              onClick={handleSheetRefresh}
+              disabled={fetching}
+              className="mt-2 w-full border border-black px-2 py-1.5 text-left text-xs font-semibold text-black disabled:opacity-50"
+            >
+              {fetching ? "Refreshing…" : "Refresh from Sheets"}
+            </button>
+            {(fetchNote || getLastSheetFetch()) && (
+              <p className="mt-1 text-xs text-black">
+                {fetchNote ||
+                  `Last fetched ${formatDate(getLastSheetFetch() ?? "")}`}
+              </p>
+            )}
+          </>
+        )}
         <button
           type="button"
           onClick={() => setOpen(true)}

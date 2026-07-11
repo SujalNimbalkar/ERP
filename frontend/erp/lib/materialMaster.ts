@@ -56,7 +56,7 @@ export const MATERIAL_MASTER: MaterialMasterEntry[] = [
   { id: "7000680-cylinder-sozai-kwpg", code: "7000680", name: "Cylinder SOZAI KWPG", weightPerPieceKg: 2.29 },
   { id: "burn-sand", code: "9700062", name: "Burn Sand", ratePerKg: 0.60 },
   { id: "reclaimed-sand", code: "RSAND", name: "Reclaimed Sand", ratePerKg: 0.35 },
-  { id: "resin-coated-sand", code: "RCSAND", name: "Resin Coated Sand", ratePerKg: 1.10 },
+  { id: "resin-coated-sand", code: "6000436", name: "Resin Coated Sand", ratePerKg: 1.10 },
 ];
 
 export const MATERIAL_SELECT_OPTIONS = MATERIAL_MASTER.map((m) => ({

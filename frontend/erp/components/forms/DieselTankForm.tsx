@@ -5,6 +5,7 @@ import { submitToSheet } from "@/lib/api";
 import {
   DIESEL_FILL_FIELDS,
   emptyValues,
+  injectOptions,
   parseFormData,
 } from "@/lib/sheetConfig";
 import {
@@ -47,15 +48,11 @@ export function DieselTankForm() {
     };
   }, []);
 
-  const fields = DIESEL_FILL_FIELDS.map((field) => {
-    if (field.name === "driverName") {
-      return { ...field, options: driverOptions.map((d) => d.label) };
-    }
-    if (field.name === "vehicleNo" && vehicleNoOptions.length > 0) {
-      return { ...field, type: "select" as const, options: vehicleNoOptions };
-    }
-    return field;
-  });
+  const fields = injectOptions(
+    injectOptions(DIESEL_FILL_FIELDS, "vehicleNo", vehicleNoOptions),
+    "driverName",
+    driverOptions.map((d) => d.label)
+  );
 
   function handleChange(name: string, value: string) {
     setValues((prev) => {

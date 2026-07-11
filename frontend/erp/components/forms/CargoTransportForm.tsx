@@ -12,6 +12,7 @@ import {
   parseFormData,
 } from "@/lib/sheetConfig";
 import { calcCargoTransportByWeight } from "@/lib/materialMaster";
+import { companyName } from "@/lib/companies";
 import { findMaterialByCodeAll } from "@/lib/materialStore";
 import { findRecordsByDocumentNo } from "@/lib/localStore";
 import { getVehicleNoOptions } from "@/lib/vehicleStore";
@@ -246,6 +247,16 @@ function suggestDieselFillRef(
   return { ...values, dieselFillRef: matchedFill?.fillRef ?? "" };
 }
 
+function ReviewRow({ label, value }: { label: string; value: string }) {
+  if (!value.trim()) return null;
+  return (
+    <div className="flex gap-2 text-xs text-black">
+      <span className="w-32 shrink-0 font-medium">{label}</span>
+      <span>{value}</span>
+    </div>
+  );
+}
+
 function resolveFieldConfig(
   field: FieldConfig,
   sourceType: (typeof CARGO_SOURCES)[number]["type"]
@@ -469,6 +480,13 @@ export function CargoTransportForm() {
     }
   }
 
+  function handleDiscard() {
+    setValues(emptySourceValues(activeSource));
+    setInvoices([createInvoice()]);
+    cancel();
+    notify("Entry deleted — form cleared.", "error");
+  }
+
   function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     setStatus("idle");
@@ -488,16 +506,16 @@ export function CargoTransportForm() {
 
   return (
     <div className="max-w-4xl">
-      <div className="mb-6">
+      <div className="mb-4">
         <h2 className="text-xl font-semibold text-black">Cargo Transport</h2>
 
-        <div className="mt-4 flex flex-wrap border border-black">
+        <div className="mt-3 flex overflow-x-auto border border-black sm:flex-wrap">
           {CARGO_SOURCES.map((source) => (
             <button
               key={source.type}
               type="button"
               onClick={() => switchSource(source)}
-              className={`px-3 py-1.5 text-sm text-black ${
+              className={`shrink-0 whitespace-nowrap px-3 py-1.5 text-sm text-black ${
                 activeSource.type === source.type ? "font-semibold underline" : "font-normal"
               }`}
             >
@@ -505,15 +523,16 @@ export function CargoTransportForm() {
             </button>
           ))}
         </div>
-        <p className="mt-2 text-xs text-black">
+        <p className="mt-1.5 text-xs text-black">
           Saving to sheet: <span className="font-semibold">{activeSource.label}</span>
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={handleSubmit} className="space-y-3">
         <FormSection
           title="1. Trip Details"
           description="Route and vehicle for this trip."
+          columns={3}
         >
           {tripFields.map((field) => (
             <div
@@ -529,10 +548,10 @@ export function CargoTransportForm() {
           title="2. Invoices & Materials"
           description="Add one or more invoices. Enter material code and qty — name and weight auto-fill."
         >
-          <div className="space-y-3 sm:col-span-2">
+          <div className="space-y-2.5 sm:col-span-2">
             {invoices.map((invoice, invoiceIndex) => (
-              <div key={invoice.id} className="border border-black bg-white p-4">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div key={invoice.id} className="border border-black bg-white p-2.5 sm:p-3">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <h4 className="text-sm font-semibold text-black">
                     Invoice {invoiceIndex + 1}
                   </h4>
@@ -547,7 +566,7 @@ export function CargoTransportForm() {
                   )}
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-2 gap-2">
                   <FormField
                     field={{
                       name: "documentNo",
@@ -566,10 +585,10 @@ export function CargoTransportForm() {
                   />
                 </div>
 
-                <div className="mt-4 space-y-3">
+                <div className="mt-2.5 space-y-2">
                   {invoice.lines.map((line, lineIndex) => (
-                    <div key={line.id} className="border border-black/40 p-3">
-                      <div className="mb-2 flex items-center justify-between gap-2">
+                    <div key={line.id} className="border border-black/40 p-2 sm:p-2.5">
+                      <div className="mb-1.5 flex items-center justify-between gap-2">
                         <span className="text-xs font-medium text-black">
                           Item {lineIndex + 1}
                         </span>
@@ -584,12 +603,12 @@ export function CargoTransportForm() {
                         )}
                       </div>
 
-                      <div className="grid gap-3 sm:grid-cols-4">
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                         {MATERIAL_ENTRY_FIELDS.map((field) => (
                           <div
                             key={`${line.id}-${field.name}`}
                             className={
-                              field.name === "materialCode" ? "sm:col-span-2" : undefined
+                              field.name === "materialCode" ? "col-span-2" : undefined
                             }
                           >
                             <FormField
@@ -642,7 +661,7 @@ export function CargoTransportForm() {
                 <button
                   type="button"
                   onClick={() => addMaterialLine(invoice.id)}
-                  className="mt-3 text-sm text-black underline"
+                  className="mt-2 text-xs text-black underline sm:text-sm"
                 >
                   + Add material to this invoice
                 </button>
@@ -664,19 +683,21 @@ export function CargoTransportForm() {
             title="3. Transport Summary"
             description="Calculated from total weight of all materials in this trip."
           >
-            <div className="sm:col-span-2 grid gap-3 sm:grid-cols-3">
-              <div className="border border-black px-3 py-2 text-sm text-black">
+            <div className="sm:col-span-2 grid grid-cols-3 gap-2">
+              <div className="border border-black px-2 py-1.5 text-sm text-black">
                 <p className="text-xs font-medium">Total Weight</p>
-                <p className="text-base">{Math.round(totalTripWeight * 1000) / 1000} kg</p>
+                <p className="text-sm sm:text-base">
+                  {Math.round(totalTripWeight * 1000) / 1000} kg
+                </p>
               </div>
-              <div className="border border-black px-3 py-2 text-sm text-black">
+              <div className="border border-black px-2 py-1.5 text-sm text-black">
                 <p className="text-xs font-medium">Rate</p>
-                <p className="text-base">{summaryRateDisplay.rate}</p>
+                <p className="text-sm sm:text-base">{summaryRateDisplay.rate}</p>
                 <p className="text-xs">{summaryRateDisplay.tier}</p>
               </div>
-              <div className="border border-black px-3 py-2 text-sm text-black">
+              <div className="border border-black px-2 py-1.5 text-sm text-black">
                 <p className="text-xs font-medium">Transport Amount</p>
-                <p className="text-base font-semibold">
+                <p className="text-sm font-semibold sm:text-base">
                   Rs {Math.round(totalTransportAmount * 100) / 100}
                 </p>
               </div>
@@ -692,7 +713,11 @@ export function CargoTransportForm() {
             {EXPENSE_SECTION.fields.map((field) => (
               <div
                 key={field.name}
-                className={field.colSpan === 2 ? "sm:col-span-2" : undefined}
+                className={
+                  field.colSpan === 2 || field.name === "dieselFillRef"
+                    ? "sm:col-span-2"
+                    : undefined
+                }
               >
                 {field.name === "dieselFillRef" ? (
                   <div className="grid gap-2 sm:grid-cols-[2fr_1fr]">
@@ -701,10 +726,10 @@ export function CargoTransportForm() {
                       value={values[field.name]}
                       onChange={handleChange}
                     />
-                    <div className="flex flex-col gap-1">
+                    <div className="flex flex-col gap-0.5">
                       <label
                         htmlFor="recent-diesel-fills"
-                        className="text-sm font-medium text-black"
+                        className="text-xs font-medium text-black"
                       >
                         Recent fills
                       </label>
@@ -713,7 +738,7 @@ export function CargoTransportForm() {
                         value={values.dieselFillRef || ""}
                         onChange={(e) => handleChange("dieselFillRef", e.target.value)}
                         disabled={!values.vehicleNo.trim() || vehicleDieselFills.length === 0}
-                        className="w-full border border-black bg-white px-3 py-2 text-sm text-black outline-none focus:border-black disabled:cursor-not-allowed disabled:opacity-60"
+                        className="w-full border border-black bg-white px-2.5 py-1.5 text-sm text-black outline-none focus:border-black disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <option value="">
                           {values.vehicleNo.trim()
@@ -764,10 +789,95 @@ export function CargoTransportForm() {
 
       <ConfirmDialog
         open={confirmOpen}
-        message={`Save this trip to ${activeSource.label}?`}
+        title="Confirm Trip Entry"
+        message={`Check the entry below, then save to ${activeSource.label}.`}
+        confirmLabel="Confirm & Save"
+        cancelLabel="Edit"
+        deleteLabel="Delete Entry"
         onConfirm={confirmSave}
         onCancel={cancel}
-      />
+        onDelete={handleDiscard}
+      >
+        <div className="space-y-3">
+          <div>
+            <p className="mb-1 text-xs font-semibold text-black">Trip Details</p>
+            <ReviewRow label="Billing Company" value={companyName(values.billingCompany)} />
+            <ReviewRow label="From" value={values.fromLocation} />
+            <ReviewRow label="To" value={values.toParty} />
+            <ReviewRow label="Vehicle No." value={values.vehicleNo} />
+            <ReviewRow label="L.R. No." value={values.lrNo} />
+          </div>
+
+          {weightedInvoices.map((invoice, index) => (
+            <div key={invoice.id}>
+              <p className="mb-1 text-xs font-semibold text-black">
+                Invoice {index + 1} — {invoice.documentNo || "(no number)"}
+                {invoice.date ? `, ${invoice.date}` : ""}
+              </p>
+              <table className="w-full border-collapse text-xs text-black">
+                <thead>
+                  <tr>
+                    <th className="border border-black px-1.5 py-0.5 text-left">Material</th>
+                    <th className="border border-black px-1.5 py-0.5 text-right">Qty</th>
+                    <th className="border border-black px-1.5 py-0.5 text-right">Weight (kg)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {invoice.lines.map((line) => (
+                    <tr key={line.id}>
+                      <td className="border border-black px-1.5 py-0.5">
+                        {line.materialCode}
+                        {line.materialDescription ? ` — ${line.materialDescription}` : ""}
+                      </td>
+                      <td className="border border-black px-1.5 py-0.5 text-right">
+                        {line.quantity} {line.uom}
+                      </td>
+                      <td className="border border-black px-1.5 py-0.5 text-right">
+                        {line.totalWt || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+
+          <div>
+            <p className="mb-1 text-xs font-semibold text-black">Transport</p>
+            <ReviewRow
+              label="Total Weight"
+              value={`${Math.round(totalTripWeight * 1000) / 1000} kg`}
+            />
+            {summaryRateDisplay && (
+              <ReviewRow
+                label="Rate"
+                value={`${summaryRateDisplay.rate}${summaryRateDisplay.tier ? ` (${summaryRateDisplay.tier})` : ""}`}
+              />
+            )}
+            <ReviewRow
+              label="Amount"
+              value={`Rs ${Math.round(totalTransportAmount * 100) / 100}`}
+            />
+          </div>
+
+          {(values.dieselFillRef || values.dieselUsedThisTrip || values.tollOverloadAmount) && (
+            <div>
+              <p className="mb-1 text-xs font-semibold text-black">Expenses</p>
+              <ReviewRow label="Diesel Fill Ref" value={values.dieselFillRef} />
+              <ReviewRow label="Diesel Used (Rs)" value={values.dieselUsedThisTrip} />
+              <ReviewRow label="Toll + Overload (Rs)" value={values.tollOverloadAmount} />
+            </div>
+          )}
+
+          {(values.receivedQty || values.receivedDate) && (
+            <div>
+              <p className="mb-1 text-xs font-semibold text-black">Receipt</p>
+              <ReviewRow label="Received Qty" value={values.receivedQty} />
+              <ReviewRow label="Received Date" value={values.receivedDate} />
+            </div>
+          )}
+        </div>
+      </ConfirmDialog>
       {toast && (
         <Toast message={toast.message} type={toast.type} onClose={dismissToast} />
       )}

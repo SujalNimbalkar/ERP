@@ -1,10 +1,34 @@
+import { COMPANY_SELECT_OPTIONS } from "./companies";
 import type { FieldConfig, FieldSection, ModuleConfig, SheetType } from "./types";
+
+/** Shared field configs — reused across sections/arrays below instead of redeclaring per module. */
+const DATE_FIELD: FieldConfig = { name: "date", label: "Date", type: "date", required: true };
+/** Which company bills this trip — decides which monthly bill it lands on. */
+const BILLING_COMPANY_FIELD: FieldConfig = {
+  name: "billingCompany",
+  label: "Billing Company",
+  type: "select",
+  required: true,
+  options: COMPANY_SELECT_OPTIONS,
+};
+const VEHICLE_NO_FIELD: FieldConfig = {
+  name: "vehicleNo",
+  label: "Vehicle No.",
+  type: "text",
+  required: true,
+  placeholder: "e.g. MH11CH2030",
+};
 
 export const MODULES: ModuleConfig[] = [
   {
     id: "cargo",
     label: "Cargo Transport",
     description: "Billing, freight & route (H19, J14, J15 - J16, Matoshri, Minerva, Machine Shop)",
+  },
+  {
+    id: "billing",
+    label: "Billing",
+    description: "Monthly tax invoices per company, plant & category",
   },
   {
     id: "infra",
@@ -130,7 +154,7 @@ export const CARGO_SECTIONS: FieldSection[] = [
         required: true,
         placeholder: "e.g. 5900089218, ME1/JUL26/04",
       },
-      { name: "date", label: "Date", type: "date", required: true },
+      DATE_FIELD,
     ],
   },
   {
@@ -138,6 +162,7 @@ export const CARGO_SECTIONS: FieldSection[] = [
     title: "Route",
     description: "From plant to consignee — e.g. Minerva → J-14, J-15/16 → Minerva",
     fields: [
+      BILLING_COMPANY_FIELD,
       {
         name: "fromLocation",
         label: "From",
@@ -151,7 +176,6 @@ export const CARGO_SECTIONS: FieldSection[] = [
         type: "select",
         required: true,
         options: [],
-        colSpan: 2,
       },
     ],
   },
@@ -159,13 +183,7 @@ export const CARGO_SECTIONS: FieldSection[] = [
     id: "transport",
     title: "Transport",
     fields: [
-      {
-        name: "vehicleNo",
-        label: "Vehicle No.",
-        type: "text",
-        required: true,
-        placeholder: "e.g. MH11CH2030",
-      },
+      VEHICLE_NO_FIELD,
       {
         name: "lrNo",
         label: "L.R. No.",
@@ -265,14 +283,14 @@ export const CARGO_SECTIONS: FieldSection[] = [
         name: "dieselUsedThisTrip",
         label: "Diesel Used This Trip (Rs)",
         type: "number",
-        step: "0.01",
+        // step: "0.01",
         placeholder: "Leave blank if unknown — reconcile in sheet",
       },
       {
         name: "tollOverloadAmount",
         label: "Toll + Overload (Rs)",
         type: "number",
-        step: "0.01",
+        // step: "0.01",
       },
     ],
   },
@@ -285,7 +303,7 @@ export const CARGO_SECTIONS: FieldSection[] = [
         name: "receivedQty",
         label: "Received Qty",
         type: "number",
-        step: "0.01",
+        // step: "0.01",
       },
       { name: "receivedDate", label: "Received Date", type: "date" },
     ],
@@ -358,20 +376,14 @@ export const DIESEL_FILL_FIELDS: FieldConfig[] = [
     placeholder: "Generated from vehicle + date",
     colSpan: 2,
   },
-  { name: "date", label: "Fill Date", type: "date", required: true },
-  {
-    name: "vehicleNo",
-    label: "Vehicle No.",
-    type: "text",
-    required: true,
-    placeholder: "e.g. MH11CH2030",
-  },
+  { ...DATE_FIELD, label: "Fill Date" },
+  VEHICLE_NO_FIELD,
   {
     name: "fillAmount",
     label: "Tank Fill Amount (Rs)",
     type: "number",
     required: true,
-    step: "0.01",
+    // step: "0.01",
     placeholder: "Total paid for full tank",
   },
   {
@@ -410,8 +422,8 @@ export const DIESEL_FILL_FIELDS: FieldConfig[] = [
 ];
 
 export const INFRA_FIELDS: FieldConfig[] = [
-  { name: "date", label: "Date", type: "date", required: true },
-  { name: "vehicleNo", label: "Vehicle No", type: "text", required: true },
+  DATE_FIELD,
+  { ...VEHICLE_NO_FIELD, label: "Vehicle No", placeholder: undefined },
   { name: "crusherChallanNo", label: "Crusher Challan No", type: "text" },
   { name: "materialType", label: "Type of Material", type: "text", placeholder: "Dabar, Khadi, Sand..." },
   { name: "crusherRate", label: "Crusher Rate", type: "number", step: "0.01" },
@@ -427,7 +439,8 @@ export const INFRA_FIELDS: FieldConfig[] = [
 ];
 
 export const PALLET_FIELDS: FieldConfig[] = [
-  { name: "date", label: "Date", type: "date", required: true },
+  BILLING_COMPANY_FIELD,
+  DATE_FIELD,
   {
     name: "dcNo",
     label: "DC No (Delivery Challan)",
@@ -465,7 +478,7 @@ export const PALLET_FIELDS: FieldConfig[] = [
     options: ["EA", "KG"],
   },
   { name: "qty", label: "Qty", type: "number", required: true },
-  { name: "vehicleNo", label: "Vehicle No.", type: "text" },
+  { ...VEHICLE_NO_FIELD, required: false, placeholder: undefined },
   { name: "lrNo", label: "L.R. No.", type: "text" },
   { name: "freightAmount", label: "Freight (Rs)", type: "number", step: "0.01" },
   {
@@ -540,10 +553,10 @@ export const SALARY_FIELDS: FieldConfig[] = [
 ];
 
 export const LEDGER_FIELDS: FieldConfig[] = [
-  { name: "date", label: "Date", type: "date", required: true },
+  DATE_FIELD,
   { name: "receiptNo", label: "Receipt No", type: "text" },
   { name: "particular", label: "Particular", type: "text", required: true },
-  { name: "vehicleNo", label: "Vehicle No", type: "text" },
+  { ...VEHICLE_NO_FIELD, required: false, placeholder: undefined },
   { name: "rate", label: "Rate", type: "number", step: "0.01" },
   { name: "brass", label: "Brass", type: "number", step: "0.01" },
   { name: "debit", label: "Debit (Dr)", type: "number", step: "0.01" },
@@ -553,6 +566,18 @@ export const LEDGER_FIELDS: FieldConfig[] = [
 /** Which key in a record's data holds its Sheet-row identity. */
 export function getRecordIdKey(type: SheetType): string {
   return type === "drivers" ? "driverId" : "id";
+}
+
+/** Turn a text field into a select once live options exist (e.g. vehicleNo, driverName). */
+export function injectOptions(
+  fields: FieldConfig[],
+  fieldName: string,
+  options: string[]
+): FieldConfig[] {
+  if (options.length === 0) return fields;
+  return fields.map((f) =>
+    f.name === fieldName ? { ...f, type: "select" as const, options } : f
+  );
 }
 
 export function emptyValues(fields: FieldConfig[]): Record<string, string> {

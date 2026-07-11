@@ -2,15 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { SheetForm } from "@/components/forms/SheetForm";
-import { INFRA_FIELDS, LEDGER_FIELDS } from "@/lib/sheetConfig";
+import { INFRA_FIELDS, LEDGER_FIELDS, injectOptions } from "@/lib/sheetConfig";
 import { getVehicleNoOptions } from "@/lib/vehicleStore";
 import type { FieldConfig } from "@/lib/types";
 
 function injectVehicleNo(fields: FieldConfig[], options: string[]): FieldConfig[] {
-  if (options.length === 0) return fields;
-  return fields.map((f) =>
-    f.name === "vehicleNo" ? { ...f, type: "select" as const, options } : f
-  );
+  return injectOptions(fields, "vehicleNo", options);
 }
 
 function useVehicleNoOptions(): string[] {

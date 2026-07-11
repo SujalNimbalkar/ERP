@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  MAINTENANCE_TYPES,
+  VEHICLE_MAINTENANCE_SECTIONS,
   type VehicleMaintenanceRecord,
   type VehicleOption,
   deleteMaintenance,
@@ -11,14 +11,14 @@ import {
   getNextMaintenanceId,
   getVehicleById,
   getVehicleOptions,
+  injectFieldOptions,
   saveMaintenance,
 } from "@/lib/vehicleStore";
+import { FormField } from "@/components/ui/FormField";
+import { FormSection } from "@/components/ui/FormSection";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Toast } from "@/components/ui/Toast";
 import { useConfirmSave } from "@/components/ui/useConfirmSave";
-
-const FIELD_CLASS =
-  "w-full border border-black bg-white px-3 py-2 text-sm text-black outline-none";
 
 function emptyForm(id: string, vehicleOpt?: VehicleOption): VehicleMaintenanceRecord {
   return {
@@ -57,16 +57,6 @@ function fmtDate(dateStr: string) {
   } catch {
     return dateStr;
   }
-}
-
-interface FieldProps { label: string; children: React.ReactNode; required?: boolean; }
-function Field({ label, children, required }: FieldProps) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-xs font-medium text-black">{label}{required && " *"}</label>
-      {children}
-    </div>
-  );
 }
 
 export function VehicleMaintenanceForm() {
@@ -108,10 +98,12 @@ export function VehicleMaintenanceForm() {
     [vehicleOptions, filterVehicleId]
   );
 
-  function handleChange(
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
-  ) {
-    const { name, value } = e.target;
+  const sections = useMemo(
+    () => injectFieldOptions(VEHICLE_MAINTENANCE_SECTIONS, "vehicleId", vehicleOptions),
+    [vehicleOptions]
+  );
+
+  function handleChange(name: string, value: string) {
     setFormValues((prev) => {
       const next = { ...prev, [name]: value };
       if (name === "vehicleId") {
@@ -246,215 +238,22 @@ export function VehicleMaintenanceForm() {
             </div>
           </div>
 
-          {/* Vehicle + Date */}
-          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
-            <Field label="Vehicle" required>
-              <select
-                name="vehicleId"
-                required
-                value={formValues.vehicleId}
-                onChange={handleChange}
-                className={FIELD_CLASS}
-              >
-                <option value="">Select vehicle…</option>
-                {vehicleOptions.map((v) => (
-                  <option key={v.value} value={v.value}>{v.label}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Reg No (auto)">
-              <input
-                type="text"
-                value={formValues.vehicleNo}
-                readOnly
-                className={FIELD_CLASS}
-              />
-            </Field>
-            <Field label="Date" required>
-              <input
-                name="date"
-                type="date"
-                required
-                value={formValues.date}
-                onChange={handleChange}
-                className={FIELD_CLASS}
-              />
-            </Field>
-          </div>
-
-          {/* Type + Description */}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Maintenance Type" required>
-              <select
-                name="maintenanceType"
-                required
-                value={formValues.maintenanceType}
-                onChange={handleChange}
-                className={FIELD_CLASS}
-              >
-                <option value="">Select…</option>
-                {MAINTENANCE_TYPES.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Description" required>
-              <input
-                name="description"
-                type="text"
-                required
-                value={formValues.description}
-                onChange={handleChange}
-                placeholder="Brief description of work done"
-                className={FIELD_CLASS}
-              />
-            </Field>
-          </div>
-
-          {/* Part details */}
-          <section>
-            <p className="mb-3 border-b border-black pb-1 text-xs font-semibold uppercase tracking-wide text-black">
-              Part / Spares
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
-              <Field label="Part Name">
-                <input
-                  name="partName"
-                  type="text"
-                  value={formValues.partName}
+          {sections.map((section) => (
+            <FormSection
+              key={section.id}
+              title={section.title}
+              columns={section.id === "type-description" ? 2 : section.id === "cost" ? 3 : 4}
+            >
+              {section.fields.map((field) => (
+                <FormField
+                  key={field.name}
+                  field={field}
+                  value={formValues[field.name as keyof VehicleMaintenanceRecord] as string}
                   onChange={handleChange}
-                  placeholder="e.g. Engine Oil Filter"
-                  className={FIELD_CLASS}
                 />
-              </Field>
-              <Field label="Part Number">
-                <input
-                  name="partNumber"
-                  type="text"
-                  value={formValues.partNumber}
-                  onChange={handleChange}
-                  className={FIELD_CLASS}
-                />
-              </Field>
-              <Field label="Vendor / Workshop">
-                <input
-                  name="vendorName"
-                  type="text"
-                  value={formValues.vendorName}
-                  onChange={handleChange}
-                  placeholder="e.g. Sharma Motors"
-                  className={FIELD_CLASS}
-                />
-              </Field>
-              <Field label="Invoice No">
-                <input
-                  name="invoiceNo"
-                  type="text"
-                  value={formValues.invoiceNo}
-                  onChange={handleChange}
-                  className={FIELD_CLASS}
-                />
-              </Field>
-            </div>
-          </section>
-
-          {/* Cost */}
-          <section>
-            <p className="mb-3 border-b border-black pb-1 text-xs font-semibold uppercase tracking-wide text-black">
-              Cost
-            </p>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Field label="Labour Cost (Rs)">
-                <input
-                  name="labourCost"
-                  type="number"
-                  step="0.01"
-                  value={formValues.labourCost}
-                  onChange={handleChange}
-                  className={FIELD_CLASS}
-                />
-              </Field>
-              <Field label="Parts Cost (Rs)">
-                <input
-                  name="partsCost"
-                  type="number"
-                  step="0.01"
-                  value={formValues.partsCost}
-                  onChange={handleChange}
-                  className={FIELD_CLASS}
-                />
-              </Field>
-              <Field label="Total Cost (Rs, auto)">
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formValues.totalCost}
-                  readOnly
-                  className={FIELD_CLASS}
-                />
-              </Field>
-            </div>
-          </section>
-
-          {/* Odometer + Next Service */}
-          <section>
-            <p className="mb-3 border-b border-black pb-1 text-xs font-semibold uppercase tracking-wide text-black">
-              Odometer &amp; Next Service
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
-              <Field label="Current Odometer (km)">
-                <input
-                  name="odometerKm"
-                  type="number"
-                  value={formValues.odometerKm}
-                  onChange={handleChange}
-                  placeholder="Reading at service"
-                  className={FIELD_CLASS}
-                />
-              </Field>
-              <Field label="Next Service (km)">
-                <input
-                  name="nextServiceKm"
-                  type="number"
-                  value={formValues.nextServiceKm}
-                  onChange={handleChange}
-                  placeholder="Due at km"
-                  className={FIELD_CLASS}
-                />
-              </Field>
-              <Field label="Next Service Date">
-                <input
-                  name="nextServiceDate"
-                  type="date"
-                  value={formValues.nextServiceDate}
-                  onChange={handleChange}
-                  className={FIELD_CLASS}
-                />
-              </Field>
-              <Field label="Done By">
-                <input
-                  name="doneBy"
-                  type="text"
-                  value={formValues.doneBy}
-                  onChange={handleChange}
-                  placeholder="Mechanic / driver name"
-                  className={FIELD_CLASS}
-                />
-              </Field>
-            </div>
-          </section>
-
-          {/* Remarks */}
-          <Field label="Remarks">
-            <textarea
-              name="remarks"
-              value={formValues.remarks}
-              onChange={handleChange}
-              rows={2}
-              placeholder="Additional notes…"
-              className={FIELD_CLASS}
-            />
-          </Field>
+              ))}
+            </FormSection>
+          ))}
         </form>
       )}
 

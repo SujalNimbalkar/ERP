@@ -93,6 +93,36 @@ export function saveLocalRecords(payload: SubmitPayload): LocalRecord[] {
   return batch;
 }
 
+/**
+ * Replaces the local cache with rows fetched from Google Sheets. Records
+ * whose sync previously failed (`synced === false`) are kept — they only
+ * exist locally and would otherwise be lost; they re-upload via retry.
+ */
+export function replaceWithSheetRecords(
+  rowsByType: Partial<Record<SheetType, Record<string, string | number>[]>>
+): void {
+  const fetchedTypes = new Set(Object.keys(rowsByType) as SheetType[]);
+  const savedAt = new Date().toISOString();
+  const kept = readAll().filter(
+    (r) => r.synced === false || !fetchedTypes.has(r.type)
+  );
+  const fetched: LocalRecord[] = (
+    Object.entries(rowsByType) as [SheetType, Record<string, string | number>[]][]
+  ).flatMap(([type, rows]) =>
+    (rows ?? []).map((data) => ({
+      id: crypto.randomUUID(),
+      type,
+      data,
+      savedAt,
+      synced: true,
+    }))
+  );
+  writeAll([...kept, ...fetched]);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("sahyadri-local-update"));
+  }
+}
+
 export function getLocalRecords(): LocalRecord[] {
   return readAll();
 }
