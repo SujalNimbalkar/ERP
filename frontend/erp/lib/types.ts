@@ -1,3 +1,8 @@
+/**
+ * `(string & {})` keeps these literals suggested by autocomplete while still
+ * accepting arbitrary custom Cargo plant types (e.g. "cargo-new-plant") added
+ * at runtime via the Plants & Vendors module.
+ */
 export type SheetType =
   | "cargo-h19"
   | "cargo-j14"
@@ -10,7 +15,9 @@ export type SheetType =
   | "diesel"
   | "drivers"
   | "salary"
-  | "ledger";
+  | "driver-expense"
+  | "ledger"
+  | (string & {});
 
 export type FieldType = "text" | "number" | "date" | "select" | "textarea";
 
@@ -53,7 +60,15 @@ export interface ApiResponse {
   storage?: "local" | "remote";
 }
 
-export type MasterType = "vehicle-master" | "vehicle-maintenance" | "materials" | "bills";
+export type MasterType =
+  | "vehicle-master"
+  | "vehicle-maintenance"
+  | "materials"
+  | "parties"
+  | "cargo-sources"
+  | "staff"
+  | "bills"
+  | "audit";
 
 export interface MasterSyncPayload {
   type: MasterType | SheetType;

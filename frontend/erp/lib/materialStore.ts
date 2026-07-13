@@ -1,6 +1,7 @@
 "use client";
 
 import { MATERIAL_MASTER, type MaterialMasterEntry } from "./materialMaster";
+import { appendAuditEntry } from "./auditLog";
 import { syncMasterRecord } from "./api";
 
 const CUSTOM_MATERIAL_KEY = "sahyadri_custom_materials";
@@ -64,15 +65,34 @@ export function saveCustomMaterial(
     isCustom: true,
     addedAt: new Date().toISOString(),
   };
+  const previous = readCustom().find((e) => e.id === entry.id);
   const existing = readCustom().filter((e) => e.id !== entry.id);
   writeCustom([saved, ...existing]);
   void syncMasterRecord({ type: "materials", action: "upsert", data: saved as unknown as Record<string, unknown> });
+  appendAuditEntry({
+    action: previous ? "edit" : "create",
+    recordType: "materials",
+    recordId: saved.id,
+    summary: `Material ${saved.code} — ${saved.name}`,
+    before: (previous ?? {}) as unknown as Record<string, string | number>,
+    after: saved as unknown as Record<string, string | number>,
+  });
   return saved;
 }
 
 export function deleteCustomMaterial(id: string) {
+  const removed = readCustom().find((e) => e.id === id);
   writeCustom(readCustom().filter((e) => e.id !== id));
   void syncMasterRecord({ type: "materials", action: "delete", id });
+  if (removed) {
+    appendAuditEntry({
+      action: "delete",
+      recordType: "materials",
+      recordId: id,
+      summary: `Deleted material ${removed.code} — ${removed.name}`,
+      before: removed as unknown as Record<string, string | number>,
+    });
+  }
 }
 
 /** Search custom first (allows overriding built-ins by code), then fall back to built-in list */

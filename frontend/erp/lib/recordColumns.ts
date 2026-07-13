@@ -1,8 +1,9 @@
 import {
   CARGO_FIELDS,
-  CARGO_SOURCES,
   DIESEL_FILL_FIELDS,
+  DRIVER_EXPENSE_FIELDS,
   DRIVER_MASTER_FIELDS,
+  getAllCargoSources,
   INFRA_FIELDS,
   LEDGER_FIELDS,
   SALARY_FIELDS,
@@ -21,8 +22,6 @@ export interface RecordViewConfig {
   columns: RecordColumn[];
 }
 
-const CARGO_TYPES = CARGO_SOURCES.map((s) => s.type);
-
 function columnsFromFields(fields: FieldConfig[]): RecordColumn[] {
   return fields.map((f) => ({ key: f.name, label: f.label }));
 }
@@ -38,7 +37,9 @@ export const RECORD_VIEWS: RecordViewConfig[] = [
   {
     id: "cargo",
     label: "Cargo Transport",
-    types: [...CARGO_TYPES],
+    get types() {
+      return getAllCargoSources().map((s) => s.type);
+    },
     columns: [
       ...META_COLUMNS,
       ID_COLUMN,
@@ -70,6 +71,12 @@ export const RECORD_VIEWS: RecordViewConfig[] = [
     columns: [...META_COLUMNS, ID_COLUMN, ...columnsFromFields(SALARY_FIELDS)],
   },
   {
+    id: "driver-expense",
+    label: "Driver Expenses",
+    types: ["driver-expense"],
+    columns: [...META_COLUMNS, ID_COLUMN, ...columnsFromFields(DRIVER_EXPENSE_FIELDS)],
+  },
+  {
     id: "ledger",
     label: "Customer Ledger",
     types: ["ledger"],
@@ -77,12 +84,8 @@ export const RECORD_VIEWS: RecordViewConfig[] = [
   },
 ];
 
-const SHEET_LABELS: Record<string, string> = Object.fromEntries(
-  CARGO_SOURCES.map((s) => [s.type, s.label])
-);
-
 export function sheetTypeLabel(type: SheetType): string {
-  return SHEET_LABELS[type] ?? type;
+  return getAllCargoSources().find((s) => s.type === type)?.label ?? type;
 }
 
 export function filterRecordsForView(

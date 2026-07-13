@@ -16,6 +16,8 @@ export interface CompanyProfile {
   defaultHsn: string;
   /** Devanagari blessing line shown above the letterhead (Sahyadri bills) */
   tagline?: string;
+  /** Letterhead banner (in /public) printed at the top of bills */
+  headerImage?: string;
 }
 
 export const COMPANIES: CompanyProfile[] = [
@@ -26,6 +28,7 @@ export const COMPANIES: CompanyProfile[] = [
     proprietor: "Mr. OMKAR YASHWANT SANAS",
     gstNo: "27GTXPS8509G1ZN",
     defaultHsn: "966791",
+    headerImage: "/madhsa-header.png",
   },
   {
     id: "sahyadri-infra",
@@ -37,6 +40,7 @@ export const COMPANIES: CompanyProfile[] = [
     gstNo: "27FIBPS0630E1ZI",
     defaultHsn: "966791",
     tagline: "|| श्री काळुबाई नमः ||",
+    headerImage: "/sahyadri-infra-header.png",
   },
 ];
 

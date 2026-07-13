@@ -4,15 +4,19 @@ import { useEffect, useState } from "react";
 import { MODULES } from "@/lib/sheetConfig";
 import { refreshFromSheets } from "@/lib/sheetFetch";
 import { CargoTransportForm } from "@/components/forms/CargoTransportForm";
-import { DriversModule } from "@/components/forms/DriversModule";
+import { DriverMasterForm } from "@/components/forms/DriverMasterForm";
+import { StaffMasterModule } from "@/components/forms/StaffMasterModule";
+import { PayrollModule } from "@/components/forms/PayrollModule";
 import {
   InfraCrusherForm,
   CustomerLedgerForm,
 } from "@/components/forms/ModuleForms";
 import { DieselTankForm } from "@/components/forms/DieselTankForm";
 import { MaterialMasterModule } from "@/components/forms/MaterialMasterModule";
+import { PartyMasterModule } from "@/components/forms/PartyMasterModule";
 import { VehicleModule } from "@/components/forms/VehicleModule";
 import { BillingModule } from "@/components/billing/BillingModule";
+import { DashboardView } from "@/components/dashboard/DashboardView";
 import { RecordsView } from "@/components/views/RecordsView";
 import { LocalDataPanel } from "@/components/layout/LocalDataPanel";
 import { hasCloudSync } from "@/lib/storageMode";
@@ -20,11 +24,15 @@ import { hasCloudSync } from "@/lib/storageMode";
 const FORM_MAP: Record<string, React.ReactNode> = {
   cargo: <CargoTransportForm />,
   billing: <BillingModule />,
+  dashboard: <DashboardView />,
   infra: <InfraCrusherForm />,
   diesel: <DieselTankForm />,
-  drivers: <DriversModule />,
+  drivers: <DriverMasterForm />,
+  staff: <StaffMasterModule />,
+  payroll: <PayrollModule />,
   ledger: <CustomerLedgerForm />,
   materials: <MaterialMasterModule />,
+  parties: <PartyMasterModule />,
   vehicles: <VehicleModule />,
   records: <RecordsView />,
 };

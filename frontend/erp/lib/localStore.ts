@@ -17,6 +17,7 @@ const ID_PREFIXES: Partial<Record<SheetType, string>> = {
   pallets: "PAL",
   diesel: "DSL",
   salary: "SAL",
+  "driver-expense": "DEX",
   ledger: "LED",
 };
 

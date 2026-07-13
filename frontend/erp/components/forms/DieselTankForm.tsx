@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { submitToSheet } from "@/lib/api";
 import {
   DIESEL_FILL_FIELDS,
+  DIESEL_RATE_PER_LITER,
   emptyValues,
   injectOptions,
   parseFormData,
@@ -26,9 +27,48 @@ function applyFillRef(values: Record<string, string>): Record<string, string> {
   return fillRef ? { ...values, fillRef } : values;
 }
 
+function initialValues(): Record<string, string> {
+  return applyFillRef({
+    ...emptyValues(DIESEL_FILL_FIELDS),
+    ratePerLiter: String(DIESEL_RATE_PER_LITER),
+  });
+}
+
+/**
+ * Auto-calculator between amount and liters at the entered rate:
+ * editing the amount (or the rate) derives liters; editing liters derives
+ * the amount.
+ */
+function applyDieselCalc(
+  values: Record<string, string>,
+  changedField: string
+): Record<string, string> {
+  const rate = Number(values.ratePerLiter);
+  if (!(rate > 0)) return values;
+  const amount = Number(values.fillAmount);
+  const liters = Number(values.liters);
+
+  if (changedField === "fillAmount" || changedField === "ratePerLiter") {
+    if (amount > 0) {
+      return { ...values, liters: String(Math.round((amount / rate) * 100) / 100) };
+    }
+    if (changedField === "fillAmount") return { ...values, liters: "" };
+    if (liters > 0) {
+      return { ...values, fillAmount: String(Math.round(liters * rate * 100) / 100) };
+    }
+  }
+  if (changedField === "liters") {
+    return {
+      ...values,
+      fillAmount: liters > 0 ? String(Math.round(liters * rate * 100) / 100) : "",
+    };
+  }
+  return values;
+}
+
 export function DieselTankForm() {
   const lastFill = loadLastDieselFill();
-  const [values, setValues] = useState(() => applyFillRef(emptyValues(DIESEL_FILL_FIELDS)));
+  const [values, setValues] = useState(() => initialValues());
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -64,7 +104,7 @@ export function DieselTankForm() {
         const driver = driverOptions.find((d) => d.label === value);
         next.driverId = driver?.value ?? "";
       }
-      return next;
+      return applyDieselCalc(next, name);
     });
     if (status !== "idle") {
       setStatus("idle");
@@ -95,7 +135,7 @@ export function DieselTankForm() {
         notify(
           `${result.message}. Use Fill Ref "${withRef.fillRef}" on cargo trips covered by this tank.`
         );
-        setValues(applyFillRef(emptyValues(DIESEL_FILL_FIELDS)));
+        setValues(initialValues());
       } else {
         setStatus("error");
         setMessage(result.message);

@@ -13,6 +13,7 @@ import {
   searchRecords,
 } from "@/lib/recordColumns";
 import { hasCloudSync, storageModeLabel } from "@/lib/storageMode";
+import { fetchAuditLog } from "@/lib/sheetFetch";
 import { appendAuditEntry, getAuditLog } from "@/lib/auditLog";
 import type { AuditEntry } from "@/lib/auditLog";
 import type { LocalRecord } from "@/lib/types";
@@ -44,6 +45,7 @@ export function RecordsView() {
   const [editing, setEditing] = useState<EditState | null>(null);
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
   const [auditSearch, setAuditSearch] = useState("");
+  const [auditSource, setAuditSource] = useState<"loading" | "sheet" | "local">("local");
   const [retryingIds, setRetryingIds] = useState<Set<string>>(new Set());
   const [bulkRetrying, setBulkRetrying] = useState(false);
   const { confirmOpen, requestConfirm, confirmSave, cancel, toast, notify, dismissToast } =
@@ -56,13 +58,26 @@ export function RecordsView() {
     setRecords(getLocalRecords());
   }
 
+  // Shows the local recent cache instantly, then swaps in the full history
+  // from the spreadsheet's Audit Log tab (local stays as offline fallback).
   function refreshAudit() {
     setAuditLog(getAuditLog());
+    if (!hasCloudSync()) return;
+    setAuditSource("loading");
+    void fetchAuditLog().then((sheetEntries) => {
+      if (sheetEntries) {
+        setAuditLog(sheetEntries);
+        setAuditSource("sheet");
+      } else {
+        setAuditSource("local");
+      }
+    });
   }
 
   useEffect(() => {
     refresh();
-    refreshAudit();
+    // local audit cache only — the sheet history is fetched when the tab opens
+    setAuditLog(getAuditLog());
     const onUpdate = () => refresh();
     window.addEventListener("sahyadri-local-update", onUpdate);
     window.addEventListener("storage", onUpdate);
@@ -83,7 +98,10 @@ export function RecordsView() {
     const q = auditSearch.trim().toLowerCase();
     if (!q) return auditLog;
     return auditLog.filter((e) =>
-      [e.action, e.recordType, e.recordId].join(" ").toLowerCase().includes(q)
+      [e.action, e.recordType, e.recordId, e.documentNo ?? "", e.summary ?? ""]
+        .join(" ")
+        .toLowerCase()
+        .includes(q)
     );
   }, [auditLog, auditSearch]);
 
@@ -258,14 +276,16 @@ export function RecordsView() {
             type="search"
             value={auditSearch}
             onChange={(e) => setAuditSearch(e.target.value)}
-            placeholder="Search by action, record type…"
+            placeholder="Search by action, record type, invoice no…"
             className="mb-4 w-full border border-black bg-white px-3 py-2 text-sm text-black outline-none"
           />
           {filteredAudit.length === 0 ? (
             <p className="border border-black px-4 py-6 text-sm text-black">
               {auditSearch
                 ? `No audit entries matching "${auditSearch}".`
-                : "No audit entries yet. Edit or delete a record to see entries here."}
+                : auditSource === "loading"
+                  ? "Loading audit history from Google Sheets…"
+                  : "No audit entries yet. Save, edit or delete a record to see entries here."}
             </p>
           ) : (
             <div className="overflow-x-auto border border-black">
@@ -307,7 +327,14 @@ export function RecordsView() {
                           {entry.recordId.slice(0, 8)}…
                         </td>
                         <td className="px-3 py-2 text-xs">
-                          {entry.action === "delete" ? (
+                          {entry.summary ? (
+                            <span title={changedFields.join(", ")} className="cursor-default">
+                              {entry.summary}
+                              {entry.documentNo ? (
+                                <span className="text-black/50"> · {entry.documentNo}</span>
+                              ) : null}
+                            </span>
+                          ) : entry.action === "delete" ? (
                             <span className="text-black/60">Record removed</span>
                           ) : (
                             <span
@@ -332,6 +359,11 @@ export function RecordsView() {
           )}
           <p className="mt-3 text-xs text-black">
             Showing {filteredAudit.length} of {auditLog.length} audit entries
+            {auditSource === "sheet" && " · full history from Google Sheets"}
+            {auditSource === "local" &&
+              hasCloudSync() &&
+              " · offline — recent entries from this device only"}
+            {auditSource === "loading" && " · loading from Google Sheets…"}
           </p>
         </div>
       ) : (

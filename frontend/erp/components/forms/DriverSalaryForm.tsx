@@ -8,7 +8,7 @@ import {
   emptyValues,
   parseFormData,
 } from "@/lib/sheetConfig";
-import { findDriverById, getDriverOptions } from "@/lib/driverStore";
+import { getPayeeOptions, findPayeeById, type StaffOption } from "@/lib/staffStore";
 import type { FieldConfig } from "@/lib/types";
 import { FormField } from "@/components/ui/FormField";
 import { StatusMessage } from "@/components/ui/StatusMessage";
@@ -16,7 +16,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Toast } from "@/components/ui/Toast";
 import { useConfirmSave } from "@/components/ui/useConfirmSave";
 
-function visibleSalaryFields(paymentType: string, driverOptions: string[]): FieldConfig[] {
+function visibleSalaryFields(paymentType: string, payeeOptions: StaffOption[]): FieldConfig[] {
   return SALARY_FIELDS.filter((field) => {
     if (field.name === "scheduledSalaryDate") {
       return paymentType === "Regular Salary" || paymentType === "Delayed Payment";
@@ -46,7 +46,7 @@ function visibleSalaryFields(paymentType: string, driverOptions: string[]): Fiel
     if (field.name === "driverId") {
       return {
         ...field,
-        options: driverOptions,
+        options: payeeOptions.map((p) => ({ value: p.value, label: p.label })),
       };
     }
     return field;
@@ -58,21 +58,22 @@ export function DriverSalaryForm() {
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [driverOptions, setDriverOptions] = useState(() => getDriverOptions());
+  const [payeeOptions, setPayeeOptions] = useState(() => getPayeeOptions());
   const { confirmOpen, requestConfirm, confirmSave, cancel, toast, notify, dismissToast } =
     useConfirmSave();
 
   const paymentType = values.paymentType;
-  const fields = visibleSalaryFields(
-    paymentType,
-    driverOptions.map((driver) => driver.value)
-  );
+  const fields = visibleSalaryFields(paymentType, payeeOptions);
 
   useEffect(() => {
-    const syncDrivers = () => setDriverOptions(getDriverOptions());
+    const sync = () => setPayeeOptions(getPayeeOptions());
 
-    window.addEventListener("sahyadri-local-update", syncDrivers);
-    return () => window.removeEventListener("sahyadri-local-update", syncDrivers);
+    window.addEventListener("sahyadri-local-update", sync);
+    window.addEventListener("sahyadri-staff-update", sync);
+    return () => {
+      window.removeEventListener("sahyadri-local-update", sync);
+      window.removeEventListener("sahyadri-staff-update", sync);
+    };
   }, []);
 
   function handleChange(name: string, value: string) {
@@ -82,9 +83,9 @@ export function DriverSalaryForm() {
       if (name === "paymentType") {
         if (value === "Regular Salary") {
           next.reason = "";
-          const selectedDriver = next.driverId ? findDriverById(next.driverId) : undefined;
-          if (selectedDriver?.totalSalary) {
-            next.amount = selectedDriver.totalSalary;
+          const selectedPayee = next.driverId ? findPayeeById(next.driverId) : undefined;
+          if (selectedPayee?.rate) {
+            next.amount = selectedPayee.rate;
           }
         }
         if (value === "Advance Payment") {
@@ -93,11 +94,11 @@ export function DriverSalaryForm() {
       }
 
       if (name === "driverId") {
-        const selectedDriver = findDriverById(value);
+        const selectedPayee = findPayeeById(value);
         next.driverId = value;
-        next.driverName = selectedDriver?.name ?? "";
-        if (paymentType === "Regular Salary" && selectedDriver?.totalSalary) {
-          next.amount = selectedDriver.totalSalary;
+        next.driverName = selectedPayee?.name ?? "";
+        if (paymentType === "Regular Salary" && selectedPayee?.rate) {
+          next.amount = selectedPayee.rate;
         }
       }
 
@@ -123,7 +124,7 @@ export function DriverSalaryForm() {
       if (result.success) {
         notify(result.message);
         setValues(emptyValues(SALARY_FIELDS));
-        setDriverOptions(getDriverOptions());
+        setPayeeOptions(getPayeeOptions());
       } else {
         setStatus("error");
         setMessage(result.message);
@@ -163,15 +164,16 @@ export function DriverSalaryForm() {
   return (
     <div className="max-w-3xl">
       <div className="mb-6">
-        <h2 className="text-xl font-semibold text-black">Driver Salaries</h2>
+        <h2 className="text-xl font-semibold text-black">Salary</h2>
         <p className="mt-1 text-sm text-black">
           Salary is paid on 4 fixed dates each month:{" "}
           {SALARY_PAY_DATES.join(", ")}. Record regular salary, advances, or
           delayed payments with a reason.
         </p>
-        {driverOptions.length === 0 && (
+        {payeeOptions.length === 0 && (
           <p className="mt-2 border border-black px-3 py-2 text-xs text-black">
-            No drivers saved yet. Create driver details first in Driver Master.
+            No drivers or staff saved yet. Create driver details in Driver Master or add
+            staff in Staff Master first.
           </p>
         )}
       </div>

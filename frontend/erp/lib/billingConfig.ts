@@ -1,4 +1,4 @@
-import { CARGO_SOURCES, type CargoSourceType } from "./sheetConfig";
+import { getAllCargoSources, type CargoSourceType } from "./sheetConfig";
 
 /**
  * Billing master data — bill categories (regular freight vs. separately
@@ -71,8 +71,18 @@ export interface BillCustomerDefaults {
   gstNo: string;
 }
 
-/** Default bill-to details per plant — editable on every bill before saving. */
-export const PLANT_CUSTOMER_DEFAULTS: Record<CargoSourceType, BillCustomerDefaults> = {
+/** Blank fallback for custom plants that have no prefilled billing defaults yet. */
+export const BLANK_CUSTOMER_DEFAULTS: BillCustomerDefaults = {
+  name: "",
+  address: "",
+  pin: "",
+  gstNo: "",
+};
+
+/** Default bill-to details per plant — editable on every bill before saving.
+ * Custom plants (added via Plants & Vendors) have no entry here; callers
+ * should fall back to `BLANK_CUSTOMER_DEFAULTS`. */
+export const PLANT_CUSTOMER_DEFAULTS: Partial<Record<CargoSourceType, BillCustomerDefaults>> = {
   "cargo-h19": {
     name: "PARANJPE AUTOCAST PVT.LTD",
     address: "H-19 Old MIDC Satara",
@@ -111,10 +121,12 @@ export const PLANT_CUSTOMER_DEFAULTS: Record<CargoSourceType, BillCustomerDefaul
   },
 };
 
-export const BILL_PLANTS = CARGO_SOURCES.map((s) => ({
-  type: s.type,
-  label: s.label,
-}));
+export function getBillPlants() {
+  return getAllCargoSources().map((s) => ({
+    type: s.type,
+    label: s.label,
+  }));
+}
 
 /** Customer plant code printed in the detail table (SAP plant, e.g. 1113). */
 export const DEFAULT_PLANT_CODE = "1113";

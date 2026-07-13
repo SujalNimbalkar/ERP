@@ -6,16 +6,18 @@ import { submitToSheet } from "@/lib/api";
 import {
   CARGO_FIELDS,
   CARGO_SECTIONS,
-  CARGO_SOURCES,
+  getAllCargoSources,
   getCargoRouteDefaults,
   emptyValues,
   parseFormData,
+  type CargoSource,
 } from "@/lib/sheetConfig";
 import { calcCargoTransportByWeight } from "@/lib/materialMaster";
 import { companyName } from "@/lib/companies";
 import { findMaterialByCodeAll } from "@/lib/materialStore";
 import { findRecordsByDocumentNo } from "@/lib/localStore";
-import { getVehicleNoOptions } from "@/lib/vehicleStore";
+import { findDriverById, getDriverOptions } from "@/lib/driverStore";
+import { getAllVehicles, getVehicleNoOptions } from "@/lib/vehicleStore";
 import {
   findLatestDieselFillByVehicle,
   listDieselFillsByVehicle,
@@ -36,12 +38,22 @@ interface MaterialLineValues {
   uom: string;
   perPartWt: string;
   totalWt: string;
+  /** True once the user has typed directly into Line Wt — stops qty/uom from recalculating it. */
+  totalWtManual: boolean;
+  /** Rate the user can override — defaults to the material's fixed rate or the trip-weight tier. */
+  rate: string;
+  /** True once the user has typed directly into Rate — stops it following the auto-computed default. */
+  rateManual: boolean;
+  /** Receiving-stamp quantity for THIS line — optional */
+  receivedQty: string;
 }
 
 interface InvoiceValues {
   id: string;
   documentNo: string;
   date: string;
+  /** Receiving-stamp date for THIS invoice — optional */
+  receivedDate: string;
   lines: MaterialLineValues[];
 }
 
@@ -50,10 +62,10 @@ const TRIP_DETAIL_SECTIONS: FieldSection[] = CARGO_SECTIONS.filter(
 );
 
 const EXPENSE_SECTION = CARGO_SECTIONS.find((section) => section.id === "expenses");
-const RECEIPT_SECTION = CARGO_SECTIONS.find((section) => section.id === "receipt");
 
 const MATERIAL_ENTRY_FIELDS: FieldConfig[] = [
   { name: "materialCode", label: "Material Code", type: "text", required: true, placeholder: "e.g. 6001679" },
+  { name: "materialDescription", label: "Name", type: "text", placeholder: "Auto-fills — editable" },
   { name: "quantity", label: "Qty", type: "number", required: true, step: "0.01" },
   {
     name: "uom",
@@ -62,7 +74,10 @@ const MATERIAL_ENTRY_FIELDS: FieldConfig[] = [
     required: true,
     options: ["EA", "KG", "Brass"],
   },
+  { name: "totalWt", label: "Line Wt (kg)", type: "number", step: "0.001", placeholder: "Auto-calculated — editable" },
+  { name: "rate", label: "Rate (Rs/kg)", type: "number", step: "0.01", placeholder: "Auto-filled — editable" },
   { name: "hsnCode", label: "HSN (optional)", type: "text", placeholder: "73259910" },
+  { name: "receivedQty", label: "Recd Qty (optional)", type: "number", step: "0.01" },
 ];
 
 function createMaterialLine(): MaterialLineValues {
@@ -75,6 +90,10 @@ function createMaterialLine(): MaterialLineValues {
     uom: "EA",
     perPartWt: "",
     totalWt: "",
+    totalWtManual: false,
+    rate: "",
+    rateManual: false,
+    receivedQty: "",
   };
 }
 
@@ -83,19 +102,18 @@ function createInvoice(): InvoiceValues {
     id: crypto.randomUUID(),
     documentNo: "",
     date: "",
+    receivedDate: "",
     lines: [createMaterialLine()],
   };
 }
 
-function emptySourceValues(
-  source: (typeof CARGO_SOURCES)[number]
-): Record<string, string> {
+function emptySourceValues(source: CargoSource): Record<string, string> {
   return applySourceRoute(emptyValues(CARGO_FIELDS), source.type);
 }
 
 function applySourceRoute(
   values: Record<string, string>,
-  sourceType: (typeof CARGO_SOURCES)[number]["type"]
+  sourceType: CargoSource["type"]
 ): Record<string, string> {
   const { fromLocation, toOptions } = getCargoRouteDefaults(sourceType);
   const toParty = toOptions.includes(values.toParty) ? values.toParty : "";
@@ -113,6 +131,9 @@ function applyMaterialDefaultsByCode(
       materialCode,
       materialDescription: "",
       perPartWt: "",
+      rate: "",
+      rateManual: false,
+      totalWtManual: false,
     };
   }
 
@@ -123,9 +144,13 @@ function applyMaterialDefaultsByCode(
     uom: material.weightPerPieceKg !== undefined ? "EA" : line.uom || "EA",
     perPartWt:
       material.weightPerPieceKg !== undefined ? String(material.weightPerPieceKg) : "",
+    rate: "",
+    rateManual: false,
+    totalWtManual: false,
   };
 }
 
+/** Default rate suggestion — the material's fixed rate, else the trip-weight tier. */
 function getLineEffectiveRate(
   line: MaterialLineValues,
   tripCalc: ReturnType<typeof calcCargoTransportByWeight>
@@ -137,7 +162,20 @@ function getLineEffectiveRate(
   return { rate: tripCalc?.transportRate ?? null, rateTier: tripCalc?.rateTier ?? "" };
 }
 
+/** Rate actually used for amount math — the user's manual override wins if present. */
+function getLineFinalRate(
+  line: MaterialLineValues,
+  tripCalc: ReturnType<typeof calcCargoTransportByWeight>
+) {
+  if (line.rateManual && line.rate.trim() !== "" && !Number.isNaN(Number(line.rate))) {
+    return { rate: Number(line.rate), rateTier: "Manual rate override" };
+  }
+  return getLineEffectiveRate(line, tripCalc);
+}
+
 function recalculateLine(line: MaterialLineValues): MaterialLineValues {
+  if (line.totalWtManual) return line;
+
   const qty = Number(line.quantity);
   const perPart = Number(line.perPartWt);
 
@@ -179,7 +217,7 @@ function buildCargoPayloads(
   return weighted.flatMap((invoice) =>
     invoice.lines.map((line) => {
       const lineWeight = Number(line.totalWt || 0);
-      const { rate, rateTier } = getLineEffectiveRate(line, tripCalc);
+      const { rate, rateTier } = getLineFinalRate(line, tripCalc);
       const transportRate = rate ?? "";
       const transportAmount =
         rate != null && lineWeight
@@ -190,6 +228,9 @@ function buildCargoPayloads(
         ...values,
         documentNo: invoice.documentNo,
         date: invoice.date,
+        // receipt stamp is per invoice (date) and per material line (qty)
+        receivedDate: invoice.receivedDate,
+        receivedQty: line.receivedQty,
         materialCode: line.materialCode,
         materialDescription: line.materialDescription,
         hsnCode: line.hsnCode,
@@ -223,7 +264,7 @@ function findDuplicateDocumentNo(
     const existing = findRecordsByDocumentNo(raw);
     if (existing.length > 0) {
       const sourceLabel =
-        CARGO_SOURCES.find((s) => s.type === existing[0].type)?.label ??
+        getAllCargoSources().find((s) => s.type === existing[0].type)?.label ??
         existing[0].type;
       return { documentNo: raw, source: sourceLabel };
     }
@@ -247,6 +288,32 @@ function suggestDieselFillRef(
   return { ...values, dieselFillRef: matchedFill?.fillRef ?? "" };
 }
 
+/** Driver follows the field the user touched: explicit pick wins; picking a
+ * vehicle suggests its assigned driver when no driver is chosen yet. */
+function applyDriverSuggestion(
+  values: Record<string, string>,
+  changedField: string
+): Record<string, string> {
+  if (changedField === "driverId") {
+    return { ...values, driverName: findDriverById(values.driverId)?.name ?? "" };
+  }
+  if (changedField === "vehicleNo" && !values.driverId) {
+    const vehicle = getAllVehicles().find(
+      (v) => v.registrationNo === values.vehicleNo.trim()
+    );
+    if (vehicle?.assignedDriverId) {
+      return {
+        ...values,
+        driverId: vehicle.assignedDriverId,
+        driverName:
+          vehicle.assignedDriverName ||
+          (findDriverById(vehicle.assignedDriverId)?.name ?? ""),
+      };
+    }
+  }
+  return values;
+}
+
 function ReviewRow({ label, value }: { label: string; value: string }) {
   if (!value.trim()) return null;
   return (
@@ -259,7 +326,7 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
 
 function resolveFieldConfig(
   field: FieldConfig,
-  sourceType: (typeof CARGO_SOURCES)[number]["type"]
+  sourceType: CargoSource["type"]
 ): FieldConfig {
   if (field.name === "toParty") {
     return {
@@ -271,24 +338,41 @@ function resolveFieldConfig(
 }
 
 export function CargoTransportForm() {
-  const [activeSource, setActiveSource] = useState<(typeof CARGO_SOURCES)[number]>(
-    CARGO_SOURCES[0]
+  const [cargoSources, setCargoSources] = useState<CargoSource[]>(() => getAllCargoSources());
+  const [activeSource, setActiveSource] = useState<CargoSource>(
+    () => getAllCargoSources()[0]
   );
   const [values, setValues] = useState<Record<string, string>>(() =>
-    emptySourceValues(CARGO_SOURCES[0])
+    emptySourceValues(getAllCargoSources()[0])
   );
   const [invoices, setInvoices] = useState<InvoiceValues[]>([createInvoice()]);
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [vehicleNoOptions, setVehicleNoOptions] = useState(() => getVehicleNoOptions());
+  const [driverOptions, setDriverOptions] = useState(() => getDriverOptions());
+  const [destinationsVersion, setDestinationsVersion] = useState(0);
   const { confirmOpen, requestConfirm, confirmSave, cancel, toast, notify, dismissToast } =
     useConfirmSave();
 
   useEffect(() => {
     const sync = () => setVehicleNoOptions(getVehicleNoOptions());
+    const syncDrivers = () => setDriverOptions(getDriverOptions());
+    const syncCargoSources = () => {
+      setCargoSources(getAllCargoSources());
+      setDestinationsVersion((v) => v + 1);
+    };
+    const syncParties = () => setDestinationsVersion((v) => v + 1);
     window.addEventListener("sahyadri-vehicle-update", sync);
-    return () => window.removeEventListener("sahyadri-vehicle-update", sync);
+    window.addEventListener("sahyadri-local-update", syncDrivers);
+    window.addEventListener("sahyadri-cargo-source-update", syncCargoSources);
+    window.addEventListener("sahyadri-party-update", syncParties);
+    return () => {
+      window.removeEventListener("sahyadri-vehicle-update", sync);
+      window.removeEventListener("sahyadri-local-update", syncDrivers);
+      window.removeEventListener("sahyadri-cargo-source-update", syncCargoSources);
+      window.removeEventListener("sahyadri-party-update", syncParties);
+    };
   }, []);
 
   const tripSections = useMemo(
@@ -300,10 +384,16 @@ export function CargoTransportForm() {
           if (f.name === "vehicleNo" && vehicleNoOptions.length > 0) {
             return { ...resolved, type: "select" as const, options: vehicleNoOptions };
           }
+          if (f.name === "driverId") {
+            return {
+              ...resolved,
+              options: driverOptions.map((d) => ({ value: d.value, label: d.label })),
+            };
+          }
           return resolved;
         }),
       })),
-    [activeSource.type, vehicleNoOptions]
+    [activeSource.type, vehicleNoOptions, driverOptions, destinationsVersion]
   );
 
   const tripFields = useMemo(() => tripSections.flatMap((s) => s.fields), [tripSections]);
@@ -326,7 +416,7 @@ export function CargoTransportForm() {
     weightedInvoices.reduce((sum, invoice) =>
       sum + invoice.lines.reduce((lineSum, line) => {
         const lineWeight = Number(line.totalWt || 0);
-        const { rate } = getLineEffectiveRate(line, tripRate);
+        const { rate } = getLineFinalRate(line, tripRate);
         return lineSum + (rate != null && lineWeight ? Math.round(lineWeight * rate * 100) / 100 : 0);
       }, 0),
     0),
@@ -338,8 +428,7 @@ export function CargoTransportForm() {
     for (const inv of weightedInvoices) {
       for (const line of inv.lines) {
         if (!Number(line.totalWt || 0)) continue;
-        const matRate = findMaterialByCodeAll(line.materialCode)?.ratePerKg;
-        const r = matRate ?? tripRate?.transportRate;
+        const r = getLineFinalRate(line, tripRate).rate;
         if (r != null) rates.add(r);
       }
     }
@@ -350,6 +439,7 @@ export function CargoTransportForm() {
         inv.lines.some(
           (line) =>
             Number(line.totalWt || 0) > 0 &&
+            !line.rateManual &&
             findMaterialByCodeAll(line.materialCode)?.ratePerKg == null
         )
       );
@@ -374,11 +464,17 @@ export function CargoTransportForm() {
   }
 
   function handleChange(name: string, value: string) {
-    setValues((prev) => suggestDieselFillRef({ ...prev, [name]: value }, name));
+    setValues((prev) =>
+      applyDriverSuggestion(suggestDieselFillRef({ ...prev, [name]: value }, name), name)
+    );
     resetStatus();
   }
 
-  function handleInvoiceChange(invoiceId: string, name: "documentNo" | "date", value: string) {
+  function handleInvoiceChange(
+    invoiceId: string,
+    name: "documentNo" | "date" | "receivedDate",
+    value: string
+  ) {
     setInvoices((prev) =>
       prev.map((invoice) => (invoice.id === invoiceId ? { ...invoice, [name]: value } : invoice))
     );
@@ -400,9 +496,16 @@ export function CargoTransportForm() {
             lines: invoice.lines.map((line) => {
               if (line.id !== lineId) return line;
               const updated = { ...line, [name]: value };
-              return name === "materialCode"
-                ? applyMaterialDefaultsByCode(updated, value)
-                : updated;
+              if (name === "materialCode") {
+                return applyMaterialDefaultsByCode(updated, value);
+              }
+              if (name === "totalWt") {
+                return { ...updated, totalWtManual: true };
+              }
+              if (name === "rate") {
+                return { ...updated, rateManual: true };
+              }
+              return updated;
             }),
           };
         })
@@ -445,7 +548,7 @@ export function CargoTransportForm() {
     resetStatus();
   }
 
-  function switchSource(source: (typeof CARGO_SOURCES)[number]) {
+  function switchSource(source: CargoSource) {
     setActiveSource(source);
     setValues(emptySourceValues(source));
     setInvoices([createInvoice()]);
@@ -510,7 +613,7 @@ export function CargoTransportForm() {
         <h2 className="text-xl font-semibold text-black">Cargo Transport</h2>
 
         <div className="mt-3 flex overflow-x-auto border border-black sm:flex-wrap">
-          {CARGO_SOURCES.map((source) => (
+          {cargoSources.map((source) => (
             <button
               key={source.type}
               type="button"
@@ -566,7 +669,7 @@ export function CargoTransportForm() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                   <FormField
                     field={{
                       name: "documentNo",
@@ -582,6 +685,15 @@ export function CargoTransportForm() {
                     field={{ name: "date", label: "Date", type: "date", required: true }}
                     value={invoice.date}
                     onChange={(_, value) => handleInvoiceChange(invoice.id, "date", value)}
+                  />
+                  <FormField
+                    field={{
+                      name: "receivedDate",
+                      label: "Received Date (optional)",
+                      type: "date",
+                    }}
+                    value={invoice.receivedDate}
+                    onChange={(_, value) => handleInvoiceChange(invoice.id, "receivedDate", value)}
                   />
                 </div>
 
@@ -603,55 +715,41 @@ export function CargoTransportForm() {
                         )}
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-                        {MATERIAL_ENTRY_FIELDS.map((field) => (
-                          <div
-                            key={`${line.id}-${field.name}`}
-                            className={
-                              field.name === "materialCode" ? "col-span-2" : undefined
-                            }
-                          >
-                            <FormField
-                              field={field}
-                              value={line[field.name as keyof MaterialLineValues] ?? ""}
-                              onChange={(_, value) =>
-                                handleMaterialLineChange(
-                                  invoice.id,
-                                  line.id,
-                                  field.name as keyof MaterialLineValues,
-                                  value
-                                )
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-6">
+                        {MATERIAL_ENTRY_FIELDS.map((field) => {
+                          const displayValue =
+                            field.name === "rate" && !line.rateManual
+                              ? String(getLineEffectiveRate(line, tripRate).rate ?? "")
+                              : (line[field.name as keyof MaterialLineValues] as string) ?? "";
+                          return (
+                            <div
+                              key={`${line.id}-${field.name}`}
+                              className={
+                                field.name === "materialCode" || field.name === "materialDescription"
+                                  ? "col-span-2"
+                                  : undefined
                               }
-                            />
-                          </div>
-                        ))}
+                            >
+                              <FormField
+                                field={field}
+                                value={displayValue}
+                                onChange={(_, value) =>
+                                  handleMaterialLineChange(
+                                    invoice.id,
+                                    line.id,
+                                    field.name as keyof MaterialLineValues,
+                                    value
+                                  )
+                                }
+                              />
+                            </div>
+                          );
+                        })}
                       </div>
 
-                      {(line.materialDescription || line.totalWt) && (
-                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-black">
-                          {line.materialDescription && (
-                            <span>
-                              <span className="font-medium">Name:</span> {line.materialDescription}
-                            </span>
-                          )}
-                          {line.perPartWt && (
-                            <span>
-                              <span className="font-medium">Per piece:</span> {line.perPartWt} kg
-                            </span>
-                          )}
-                          {line.totalWt && (
-                            <span>
-                              <span className="font-medium">Line wt:</span> {line.totalWt} kg
-                            </span>
-                          )}
-                          {(() => {
-                            const matRate = findMaterialByCodeAll(line.materialCode)?.ratePerKg;
-                            return matRate != null ? (
-                              <span className="font-medium">
-                                Rate: Rs {matRate}/kg
-                              </span>
-                            ) : null;
-                          })()}
+                      {line.perPartWt && (
+                        <div className="mt-2 text-xs text-black">
+                          <span className="font-medium">Per piece:</span> {line.perPartWt} kg
                         </div>
                       )}
                     </div>
@@ -763,19 +861,6 @@ export function CargoTransportForm() {
           </FormSection>
         )}
 
-        {RECEIPT_SECTION && (
-          <FormSection title="Receipt (Optional)" description={RECEIPT_SECTION.description}>
-            {RECEIPT_SECTION.fields.map((field) => (
-              <FormField
-                key={field.name}
-                field={field}
-                value={values[field.name]}
-                onChange={handleChange}
-              />
-            ))}
-          </FormSection>
-        )}
-
         <StatusMessage type={status} message={message} />
 
         <button
@@ -806,6 +891,10 @@ export function CargoTransportForm() {
             <ReviewRow label="To" value={values.toParty} />
             <ReviewRow label="Vehicle No." value={values.vehicleNo} />
             <ReviewRow label="L.R. No." value={values.lrNo} />
+            <ReviewRow
+              label="Driver"
+              value={values.driverName || values.driverId}
+            />
           </div>
 
           {weightedInvoices.map((invoice, index) => (
@@ -813,6 +902,7 @@ export function CargoTransportForm() {
               <p className="mb-1 text-xs font-semibold text-black">
                 Invoice {index + 1} — {invoice.documentNo || "(no number)"}
                 {invoice.date ? `, ${invoice.date}` : ""}
+                {invoice.receivedDate ? ` · received ${invoice.receivedDate}` : ""}
               </p>
               <table className="w-full border-collapse text-xs text-black">
                 <thead>
@@ -831,6 +921,7 @@ export function CargoTransportForm() {
                       </td>
                       <td className="border border-black px-1.5 py-0.5 text-right">
                         {line.quantity} {line.uom}
+                        {line.receivedQty ? ` (recd ${line.receivedQty})` : ""}
                       </td>
                       <td className="border border-black px-1.5 py-0.5 text-right">
                         {line.totalWt || "—"}
@@ -869,13 +960,6 @@ export function CargoTransportForm() {
             </div>
           )}
 
-          {(values.receivedQty || values.receivedDate) && (
-            <div>
-              <p className="mb-1 text-xs font-semibold text-black">Receipt</p>
-              <ReviewRow label="Received Qty" value={values.receivedQty} />
-              <ReviewRow label="Received Date" value={values.receivedDate} />
-            </div>
-          )}
         </div>
       </ConfirmDialog>
       {toast && (

@@ -1,5 +1,23 @@
 import type { ApiResponse, LocalRecord, MasterSyncPayload, SubmitPayload } from "./types";
+import { appendAuditEntry } from "./auditLog";
 import { markRecordsSynced, saveLocalRecord, saveLocalRecords } from "./localStore";
+
+/** One audit entry per form submission (not per material line). */
+function auditFormSubmission(type: string, rows: Record<string, string | number>[]) {
+  if (rows.length === 0) return;
+  const docNos = Array.from(
+    new Set(rows.map((r) => String(r.documentNo ?? r.dcNo ?? "")).filter(Boolean))
+  );
+  appendAuditEntry({
+    action: "create",
+    recordType: type,
+    recordId: String(rows[0].id ?? ""),
+    documentNo: docNos.join(", "),
+    summary: `${rows.length} row(s) saved to ${type}`,
+    before: {},
+    after: rows[0],
+  });
+}
 
 const GAS_URL = process.env.NEXT_PUBLIC_GAS_WEB_APP_URL ?? "";
 
@@ -26,6 +44,11 @@ export async function submitToSheet(
     outgoingPayload = { type: payload.type, data: record.data };
     savedIds = [record.id];
   }
+
+  auditFormSubmission(
+    payload.type,
+    outgoingPayload.records ?? (outgoingPayload.data ? [outgoingPayload.data] : [])
+  );
 
   const localMsg =
     rowCount > 1

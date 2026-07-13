@@ -1,4 +1,6 @@
 import { COMPANY_SELECT_OPTIONS } from "./companies";
+import { getCustomCargoSources } from "./cargoSourceStore";
+import { getAllPartyNames } from "./partyStore";
 import type { FieldConfig, FieldSection, ModuleConfig, SheetType } from "./types";
 
 /** Shared field configs — reused across sections/arrays below instead of redeclaring per module. */
@@ -31,6 +33,11 @@ export const MODULES: ModuleConfig[] = [
     description: "Monthly tax invoices per company, plant & category",
   },
   {
+    id: "dashboard",
+    label: "Dashboard",
+    description: "Vehicle & driver analytics, transportation profit / loss",
+  },
+  {
     id: "infra",
     label: "Infra & Crusher",
     description: "Crusher and infrastructure transport",
@@ -43,7 +50,17 @@ export const MODULES: ModuleConfig[] = [
   {
     id: "drivers",
     label: "Drivers",
-    description: "Driver master and salary management",
+    description: "Driver master for vehicle-assigned drivers",
+  },
+  {
+    id: "staff",
+    label: "Staff Master",
+    description: "Accountants, hamals and other non-driver staff",
+  },
+  {
+    id: "payroll",
+    label: "Payroll",
+    description: "Salary and daily wage/expense entries for drivers and staff",
   },
   {
     id: "ledger",
@@ -54,6 +71,11 @@ export const MODULES: ModuleConfig[] = [
     id: "materials",
     label: "Material Master",
     description: "Browse built-in materials and add custom entries",
+  },
+  {
+    id: "parties",
+    label: "Plants & Vendors",
+    description: "Add cargo plants (new sources) and delivery vendors (destinations)",
   },
   {
     id: "vehicles",
@@ -67,7 +89,7 @@ export const MODULES: ModuleConfig[] = [
   },
 ];
 
-export const CARGO_SOURCES = [
+export const BUILT_IN_CARGO_SOURCES = [
   { type: "cargo-h19", label: "H19 - Paranjape Satara", sheetTab: "H19" },
   { type: "cargo-j14", label: "J14 - Paranjape Satara", sheetTab: "J14" },
   { type: "cargo-j15-j16", label: "J15 - J16 - Paranjape Satara", sheetTab: "J15 -  J16" },
@@ -76,59 +98,35 @@ export const CARGO_SOURCES = [
   { type: "cargo-machine-shop", label: "Machine Shop - Paranjape Shirwal", sheetTab: "Machine Shop - Shirwal" },
 ] as const;
 
-export type CargoSourceType = (typeof CARGO_SOURCES)[number]["type"];
+export type CargoSourceType = string;
 
-/** Valid destinations per origin — used for the To dropdown */
-export const CARGO_DESTINATIONS: Record<CargoSourceType, string[]> = {
-  "cargo-h19": [
-    "J14 - Paranjape Satara",
-    "J15 - J16 - Paranjape Satara",
-    "Machine Shop - Paranjape Shirwal",
-    "Minerva Enterprises - Kolhapur",
-    "Matoshri Enterprise - Shirwal",
-  ],
-  "cargo-j14": [
-    "Machine Shop - Paranjape Shirwal",
-    "Minerva Enterprises - Kolhapur",
-    "H19 - Paranjape Satara",
-    "J15 - J16 - Paranjape Satara",
-    "Matoshri Enterprise - Shirwal",
-  ],
-  "cargo-j15-j16": [
-    "Minerva Enterprises - Kolhapur",
-    "J14 - Paranjape Satara",
-    "H19 - Paranjape Satara",
-    "Machine Shop - Paranjape Shirwal",
-    "Matoshri Enterprise - Shirwal",
-  ],
-  "cargo-matoshri": [
-    "J14 - Paranjape Satara",
-    "J15 - J16 - Paranjape Satara",
-    "H19 - Paranjape Satara",
-    "Machine Shop - Paranjape Shirwal",
-    "Minerva Enterprises - Kolhapur",
-  ],
-  "cargo-minerva": [
-    "J14 - Paranjape Satara",
-    "J15 - J16 - Paranjape Satara",
-    "H19 - Paranjape Satara",
-    "Machine Shop - Paranjape Shirwal",
-    "Matoshri Enterprise - Shirwal",
-  ],
-  "cargo-machine-shop": [
-    "J14 - Paranjape Satara",
-    "J15 - J16 - Paranjape Satara",
-    "H19 - Paranjape Satara",
-    "Minerva Enterprises - Kolhapur",
-    "Matoshri Enterprise - Shirwal",
-  ],
-};
+export interface CargoSource {
+  type: CargoSourceType;
+  label: string;
+  sheetTab: string;
+}
+
+/** Built-in plants + any custom plants added from the Plants & Vendors module. */
+export function getAllCargoSources(): CargoSource[] {
+  return [...BUILT_IN_CARGO_SOURCES, ...getCustomCargoSources()];
+}
+
+/**
+ * Destinations for a given origin: every other known plant (built-in + custom)
+ * plus every custom delivery vendor/party — computed, not hand-maintained.
+ */
+export function getCargoDestinationsFor(sourceType: CargoSourceType): string[] {
+  const otherPlants = getAllCargoSources()
+    .filter((s) => s.type !== sourceType)
+    .map((s) => s.label);
+  return [...otherPlants, ...getAllPartyNames()];
+}
 
 export function getCargoRouteDefaults(sourceType: CargoSourceType) {
-  const source = CARGO_SOURCES.find((s) => s.type === sourceType);
+  const source = getAllCargoSources().find((s) => s.type === sourceType);
   return {
     fromLocation: source?.label ?? "",
-    toOptions: CARGO_DESTINATIONS[sourceType] ?? [],
+    toOptions: getCargoDestinationsFor(sourceType),
   };
 }
 
@@ -189,6 +187,18 @@ export const CARGO_SECTIONS: FieldSection[] = [
         label: "L.R. No.",
         type: "text",
         placeholder: "e.g. 1517",
+      },
+      {
+        name: "driverId",
+        label: "Driver",
+        type: "select",
+        options: [],
+      },
+      {
+        name: "driverName",
+        label: "Driver Name (auto)",
+        type: "text",
+        readOnly: true,
       },
     ],
   },
@@ -367,6 +377,9 @@ export const DRIVER_MASTER_FIELDS: FieldConfig[] = [
 ];
 
 
+/** Default pump price — editable per fill in the form. */
+export const DIESEL_RATE_PER_LITER = 99.24;
+
 export const DIESEL_FILL_FIELDS: FieldConfig[] = [
   {
     name: "fillRef",
@@ -387,11 +400,18 @@ export const DIESEL_FILL_FIELDS: FieldConfig[] = [
     placeholder: "Total paid for full tank",
   },
   {
-    name: "liters",
-    label: "Liters Filled",
+    name: "ratePerLiter",
+    label: "Diesel Rate (Rs/liter)",
     type: "number",
     step: "0.01",
-    placeholder: "Optional",
+    placeholder: `e.g. ${DIESEL_RATE_PER_LITER}`,
+  },
+  {
+    name: "liters",
+    label: "Liters Filled (auto)",
+    type: "number",
+    step: "0.01",
+    placeholder: "Auto: amount ÷ rate",
   },
   {
     name: "driverName",
@@ -503,14 +523,14 @@ export const SALARY_PAYMENT_TYPES = [
 export const SALARY_FIELDS: FieldConfig[] = [
   {
     name: "driverId",
-    label: "Driver",
+    label: "Staff / Driver",
     type: "select",
     required: true,
     options: [],
   },
   {
     name: "driverName",
-    label: "Driver Name",
+    label: "Name (auto)",
     type: "text",
     readOnly: true,
   },
@@ -548,6 +568,63 @@ export const SALARY_FIELDS: FieldConfig[] = [
     label: "Reason",
     type: "textarea",
     placeholder: "Required for advance or delayed payment",
+    colSpan: 2,
+  },
+];
+
+export const DRIVER_EXPENSE_TYPES = [
+  "Food",
+  "Travel",
+  "Lodging / Night Halt",
+  "Toll / Parking",
+  "Mobile Recharge",
+  "Medical",
+  "Repair on Road",
+  "Other",
+] as const;
+
+export const DRIVER_EXPENSE_PAYMENT_MODES = ["Cash", "UPI", "Company Account"] as const;
+
+export const DRIVER_EXPENSE_FIELDS: FieldConfig[] = [
+  {
+    name: "driverId",
+    label: "Staff / Driver",
+    type: "select",
+    required: true,
+    options: [],
+  },
+  {
+    name: "driverName",
+    label: "Name (auto)",
+    type: "text",
+    readOnly: true,
+  },
+  DATE_FIELD,
+  {
+    name: "expenseType",
+    label: "Expense Type",
+    type: "select",
+    required: true,
+    options: [...DRIVER_EXPENSE_TYPES],
+  },
+  {
+    name: "amount",
+    label: "Amount (Rs)",
+    type: "number",
+    required: true,
+    step: "0.01",
+  },
+  {
+    name: "paymentMode",
+    label: "Paid Via",
+    type: "select",
+    options: [...DRIVER_EXPENSE_PAYMENT_MODES],
+  },
+  {
+    name: "note",
+    label: "Note",
+    type: "textarea",
+    placeholder: "e.g. lunch on Kolhapur trip, bus fare back to Satara",
     colSpan: 2,
   },
 ];

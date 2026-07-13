@@ -11,12 +11,13 @@ import {
 } from "@/lib/billing";
 import {
   BILL_CATEGORIES,
-  BILL_PLANTS,
+  BLANK_CUSTOMER_DEFAULTS,
   COMPANIES,
   DEFAULT_PLANT_CODE,
   GST_PERCENT_DEFAULT,
   PLANT_CUSTOMER_DEFAULTS,
   findCompany,
+  getBillPlants,
 } from "@/lib/billingConfig";
 import type { CargoSourceType } from "@/lib/sheetConfig";
 import {
@@ -63,8 +64,8 @@ interface BillFormValues {
 
 function defaultValues(): BillFormValues {
   const company = COMPANIES[0];
-  const plantType = BILL_PLANTS[0].type;
-  const customer = PLANT_CUSTOMER_DEFAULTS[plantType];
+  const plantType = getBillPlants()[0].type;
+  const customer = PLANT_CUSTOMER_DEFAULTS[plantType] ?? BLANK_CUSTOMER_DEFAULTS;
   return {
     companyId: company.id,
     plantType,
@@ -94,13 +95,11 @@ function applyDefaults(values: BillFormValues, changed: keyof BillFormValues): B
     }
   }
   if (changed === "plantType") {
-    const customer = PLANT_CUSTOMER_DEFAULTS[next.plantType];
-    if (customer) {
-      next.customerName = customer.name;
-      next.customerAddress = customer.address;
-      next.customerPin = customer.pin;
-      next.customerGst = customer.gstNo;
-    }
+    const customer = PLANT_CUSTOMER_DEFAULTS[next.plantType] ?? BLANK_CUSTOMER_DEFAULTS;
+    next.customerName = customer.name;
+    next.customerAddress = customer.address;
+    next.customerPin = customer.pin;
+    next.customerGst = customer.gstNo;
   }
   if (
     changed === "companyId" ||
@@ -133,12 +132,16 @@ export function BillingModule() {
   useEffect(() => {
     const syncRecords = () => setRecordsVersion((v) => v + 1);
     window.addEventListener("sahyadri-local-update", syncRecords);
+    window.addEventListener("sahyadri-cargo-source-update", syncRecords);
     const offBills = onBillsUpdate(() => setSavedBills(getAllBills()));
     return () => {
       window.removeEventListener("sahyadri-local-update", syncRecords);
+      window.removeEventListener("sahyadri-cargo-source-update", syncRecords);
       offBills();
     };
   }, []);
+
+  const billPlants = useMemo(() => getBillPlants(), [recordsVersion]);
 
   const lines = useMemo(
     () =>
@@ -159,7 +162,7 @@ export function BillingModule() {
   const totals = useMemo(() => computeBillTotals(lines, gstPercent), [lines, gstPercent]);
 
   const plantLabel =
-    BILL_PLANTS.find((p) => p.type === values.plantType)?.label ?? values.plantType;
+    billPlants.find((p) => p.type === values.plantType)?.label ?? values.plantType;
 
   const draft: BillData = {
     companyId: values.companyId,
@@ -306,7 +309,7 @@ export function BillingModule() {
               label: "Plant / Source",
               type: "select",
               required: true,
-              options: BILL_PLANTS.map((p) => ({ value: p.type, label: p.label })),
+              options: billPlants.map((p) => ({ value: p.type, label: p.label })),
             }}
             value={values.plantType}
             onChange={handleChange}

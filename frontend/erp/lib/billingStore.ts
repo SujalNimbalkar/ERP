@@ -1,4 +1,5 @@
 import { syncMasterRecord } from "./api";
+import { appendAuditEntry } from "./auditLog";
 import { totalWeight, type BillLineItem, type RateGroup, type BillTotals } from "./billing";
 import type { BillCustomerDefaults } from "./billingConfig";
 import { companyName } from "./companies";
@@ -111,10 +112,34 @@ export function replaceWithSheetBills(rows: Record<string, unknown>[]): void {
   writeBills(bills);
 }
 
+/** Compact bill snapshot for audit entries — omits the bulky billJson/lines. */
+function billAuditSnapshot(bill: SavedBill): Record<string, string | number> {
+  return {
+    invoiceNo: bill.invoiceNo,
+    invoiceDate: bill.invoiceDate,
+    company: companyName(bill.companyId),
+    plant: bill.plantLabel,
+    category: bill.categoryId,
+    month: bill.month,
+    lineCount: bill.lines.length,
+    grandTotal: bill.totals.grandTotal,
+  };
+}
+
 export function saveBill(bill: SavedBill): SavedBill {
+  const existed = readBills().some((b) => b.id === bill.id);
   const all = readBills().filter((b) => b.id !== bill.id);
   writeBills([bill, ...all]);
   void syncMasterRecord({ type: "bills", action: "upsert", data: billSheetRow(bill) });
+  appendAuditEntry({
+    action: existed ? "edit" : "create",
+    recordType: "bills",
+    recordId: bill.id,
+    documentNo: bill.invoiceNo,
+    summary: `Bill ${bill.invoiceNo} — ${bill.plantLabel}, ${bill.month}`,
+    before: {},
+    after: billAuditSnapshot(bill),
+  });
   return bill;
 }
 
@@ -122,9 +147,18 @@ export function deleteBill(id: string): boolean {
   const all = readBills();
   const idx = all.findIndex((b) => b.id === id);
   if (idx === -1) return false;
+  const removed = all[idx];
   all.splice(idx, 1);
   writeBills(all);
   void syncMasterRecord({ type: "bills", action: "delete", id });
+  appendAuditEntry({
+    action: "delete",
+    recordType: "bills",
+    recordId: id,
+    documentNo: removed.invoiceNo,
+    summary: `Deleted bill ${removed.invoiceNo} — ${removed.plantLabel}, ${removed.month}`,
+    before: billAuditSnapshot(removed),
+  });
   return true;
 }
 

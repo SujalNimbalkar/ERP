@@ -1,4 +1,5 @@
 import { syncMasterRecord } from "./api";
+import { appendAuditEntry } from "./auditLog";
 import type { FieldConfig, FieldSection } from "./types";
 
 export interface VehicleMasterRecord {
@@ -83,7 +84,7 @@ export const MAINTENANCE_TYPES = [
   "Part Replacement",
   "AC Service",
   "Electrical Repair",
-  "Suspension",
+  "Puncture Repair",
   "Other",
 ] as const;
 
@@ -163,7 +164,7 @@ export const VEHICLE_MAINTENANCE_SECTIONS: FieldSection[] = [
     title: "Type & Description",
     fields: [
       { name: "maintenanceType", label: "Maintenance Type", type: "select", required: true, options: [...MAINTENANCE_TYPES] },
-      { name: "description", label: "Description", type: "text", required: true, placeholder: "Brief description of work done" },
+      { name: "description", label: "Description", type: "text", required: false, placeholder: "Brief description of work done" },
     ],
   },
   {
@@ -180,9 +181,9 @@ export const VEHICLE_MAINTENANCE_SECTIONS: FieldSection[] = [
     id: "cost",
     title: "Cost",
     fields: [
-      { name: "labourCost", label: "Labour Cost (Rs)", type: "number", step: "0.01" },
-      { name: "partsCost", label: "Parts Cost (Rs)", type: "number", step: "0.01" },
-      { name: "totalCost", label: "Total Cost (Rs, auto)", type: "number", step: "0.01", readOnly: true },
+      { name: "labourCost", label: "Labour Cost (Rs)", type: "number" },
+      { name: "partsCost", label: "Parts Cost (Rs)", type: "number" },
+      { name: "totalCost", label: "Total Cost (Rs, auto)", type: "number", readOnly: true },
     ],
   },
   {
@@ -308,9 +309,18 @@ export function getVehicleNoOptions(): string[] {
 }
 
 export function saveVehicle(record: VehicleMasterRecord): VehicleMasterRecord {
+  const existing = readMaster().find((v) => v.id === record.id);
   const all = readMaster().filter((v) => v.id !== record.id);
   writeMaster([record, ...all]);
   void syncMasterRecord({ type: "vehicle-master", action: "upsert", data: record as unknown as Record<string, unknown> });
+  appendAuditEntry({
+    action: existing ? "edit" : "create",
+    recordType: "vehicle-master",
+    recordId: record.id,
+    summary: `Vehicle ${record.id} — ${record.registrationNo}`,
+    before: (existing ?? {}) as unknown as Record<string, string | number>,
+    after: record as unknown as Record<string, string | number>,
+  });
   return record;
 }
 
@@ -321,9 +331,18 @@ export function updateVehicle(
   const all = readMaster();
   const idx = all.findIndex((v) => v.id === id);
   if (idx === -1) return false;
+  const before = all[idx];
   all[idx] = { ...all[idx], ...updates, updatedAt: new Date().toISOString() };
   writeMaster(all);
   void syncMasterRecord({ type: "vehicle-master", action: "upsert", data: all[idx] as unknown as Record<string, unknown> });
+  appendAuditEntry({
+    action: "edit",
+    recordType: "vehicle-master",
+    recordId: id,
+    summary: `Vehicle ${id} — ${before.registrationNo} updated`,
+    before: before as unknown as Record<string, string | number>,
+    after: all[idx] as unknown as Record<string, string | number>,
+  });
   return true;
 }
 
@@ -331,9 +350,17 @@ export function deleteVehicle(id: string): boolean {
   const all = readMaster();
   const idx = all.findIndex((v) => v.id === id);
   if (idx === -1) return false;
+  const removed = all[idx];
   all.splice(idx, 1);
   writeMaster(all);
   void syncMasterRecord({ type: "vehicle-master", action: "delete", id });
+  appendAuditEntry({
+    action: "delete",
+    recordType: "vehicle-master",
+    recordId: id,
+    summary: `Deleted vehicle ${id} — ${removed.registrationNo}`,
+    before: removed as unknown as Record<string, string | number>,
+  });
   return true;
 }
 
@@ -350,9 +377,19 @@ export function getMaintenanceByVehicle(vehicleId: string): VehicleMaintenanceRe
 export function saveMaintenance(
   record: VehicleMaintenanceRecord
 ): VehicleMaintenanceRecord {
+  const existing = readMaintenance().find((m) => m.id === record.id);
   const all = readMaintenance().filter((m) => m.id !== record.id);
   writeMaintenance([record, ...all]);
   void syncMasterRecord({ type: "vehicle-maintenance", action: "upsert", data: record as unknown as Record<string, unknown> });
+  appendAuditEntry({
+    action: existing ? "edit" : "create",
+    recordType: "vehicle-maintenance",
+    recordId: record.id,
+    documentNo: record.invoiceNo,
+    summary: `Maintenance ${record.id} — ${record.vehicleNo}, ${record.maintenanceType}`,
+    before: (existing ?? {}) as unknown as Record<string, string | number>,
+    after: record as unknown as Record<string, string | number>,
+  });
   return record;
 }
 
@@ -360,9 +397,18 @@ export function deleteMaintenance(id: string): boolean {
   const all = readMaintenance();
   const idx = all.findIndex((m) => m.id === id);
   if (idx === -1) return false;
+  const removed = all[idx];
   all.splice(idx, 1);
   writeMaintenance(all);
   void syncMasterRecord({ type: "vehicle-maintenance", action: "delete", id });
+  appendAuditEntry({
+    action: "delete",
+    recordType: "vehicle-maintenance",
+    recordId: id,
+    documentNo: removed.invoiceNo,
+    summary: `Deleted maintenance ${id} — ${removed.vehicleNo}`,
+    before: removed as unknown as Record<string, string | number>,
+  });
   return true;
 }
 

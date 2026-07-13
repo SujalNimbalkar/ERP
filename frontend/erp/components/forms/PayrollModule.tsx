@@ -1,23 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import { DriverMasterForm } from "@/components/forms/DriverMasterForm";
 import { DriverSalaryForm } from "@/components/forms/DriverSalaryForm";
+import { DriverExpenseForm } from "@/components/forms/DriverExpenseForm";
 
-const DRIVER_TABS = [
-  { id: "master", label: "Driver Master" },
-  { id: "salary", label: "Driver Salary" },
+const PAYROLL_TABS = [
+  { id: "salary", label: "Salary" },
+  { id: "expense", label: "Daily Expenses" },
 ] as const;
 
-export function DriversModule() {
-  const [activeTab, setActiveTab] = useState<(typeof DRIVER_TABS)[number]["id"]>("master");
+export function PayrollModule() {
+  const [activeTab, setActiveTab] = useState<(typeof PAYROLL_TABS)[number]["id"]>("salary");
 
   return (
     <div className="max-w-4xl">
       <div className="mb-6">
-        <h2 className="text-xl font-semibold text-black">Drivers</h2>
+        <h2 className="text-xl font-semibold text-black">Payroll</h2>
+        <p className="mt-1 text-sm text-black">
+          Salary and daily wage/expense entries for drivers and staff.
+        </p>
         <div className="mt-4 flex flex-wrap border border-black">
-          {DRIVER_TABS.map((tab) => (
+          {PAYROLL_TABS.map((tab) => (
             <button
               key={tab.id}
               type="button"
@@ -32,7 +35,7 @@ export function DriversModule() {
         </div>
       </div>
 
-      {activeTab === "master" ? <DriverMasterForm /> : <DriverSalaryForm />}
+      {activeTab === "salary" ? <DriverSalaryForm /> : <DriverExpenseForm />}
     </div>
   );
 }

@@ -1,0 +1,516 @@
+import { getLocalRecordsByType } from "./localStore";
+import { getAllCargoSources, type CargoSourceType } from "./sheetConfig";
+import { getAllMaintenance, getAllVehicles } from "./vehicleStore";
+import { getAllStaff } from "./staffStore";
+import { round2 } from "./billing";
+import type { LocalRecord } from "./types";
+
+/**
+ * Dashboard aggregations — pure reads over the hydrated stores.
+ *
+ * Correctness rules:
+ * - Cargo rows are per material line; a *trip* is the group of rows sharing
+ *   type + vehicleNo + date + lrNo. Trip-level amounts (toll, diesel-used)
+ *   repeat on every row and are counted once per trip; per-line
+ *   transportAmount is summed.
+ * - Diesel cost comes from actual tank fills (fillAmount), not the per-trip
+ *   estimates, so fuel money is never double counted.
+ */
+
+export interface DashboardFilters {
+  /** Inclusive YYYY-MM range */
+  fromMonth: string;
+  toMonth: string;
+  companyId?: string;
+  vehicleNo?: string;
+  driverId?: string;
+  plantType?: CargoSourceType | "";
+}
+
+export interface Trip {
+  key: string;
+  plantType: CargoSourceType;
+  date: string;
+  month: string;
+  vehicleNo: string;
+  lrNo: string;
+  companyId: string;
+  driverId: string;
+  driverName: string;
+  lineCount: number;
+  totalWt: number;
+  earning: number;
+  toll: number;
+  dieselUsed: number;
+  documentNos: string[];
+}
+
+export interface VehicleSummaryRow {
+  vehicleNo: string;
+  trips: number;
+  totalWt: number;
+  earnings: number;
+  dieselCost: number;
+  maintenanceCost: number;
+  toll: number;
+  profit: number;
+}
+
+export interface DriverSummaryRow {
+  driverId: string;
+  driverName: string;
+  trips: number;
+  totalWt: number;
+  earningsHauled: number;
+  salaryPaid: number;
+  dailyExpenses: number;
+  expensesByType: Record<string, number>;
+  totalCost: number;
+}
+
+export interface StaffPayrollRow {
+  staffId: string;
+  name: string;
+  role: string;
+  salaryPaid: number;
+  dailyExpenses: number;
+  expensesByType: Record<string, number>;
+  totalCost: number;
+}
+
+export interface MonthlyPLRow {
+  month: string;
+  revenue: number;
+  diesel: number;
+  toll: number;
+  maintenance: number;
+  salary: number;
+  driverExpenses: number;
+  profit: number;
+  revenueByCompany: Record<string, number>;
+}
+
+function num(v: string | number | undefined): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function inRange(date: string, filters: DashboardFilters): boolean {
+  const month = date.slice(0, 7);
+  if (!month) return false;
+  return month >= filters.fromMonth && month <= filters.toMonth;
+}
+
+/** driverId → name map from the Drivers records. */
+function driverNameMap(): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const r of getLocalRecordsByType("drivers")) {
+    const id = String(r.data.driverId ?? "");
+    if (!id) continue;
+    const name = [r.data.firstName, r.data.middleName, r.data.surname]
+      .map((p) => String(p ?? "").trim())
+      .filter(Boolean)
+      .join(" ");
+    map.set(id, name);
+  }
+  return map;
+}
+
+/** staffId → {name, role} map from the Staff Master — non-driver payees. */
+function staffInfoMap(): Map<string, { name: string; role: string }> {
+  const map = new Map<string, { name: string; role: string }>();
+  for (const s of getAllStaff()) {
+    if (!s.id) continue;
+    map.set(s.id, { name: s.name, role: s.role });
+  }
+  return map;
+}
+
+/** fillRef → driverId map from Diesel Tank records (legacy driver fallback). */
+function fillDriverMap(): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const r of getLocalRecordsByType("diesel")) {
+    const ref = String(r.data.fillRef ?? "");
+    const driver = String(r.data.driverId ?? "");
+    if (ref && driver) map.set(ref, driver);
+  }
+  return map;
+}
+
+/** registrationNo → assignedDriverId map (last-resort driver fallback). */
+function vehicleDriverMap(): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const v of getAllVehicles()) {
+    if (v.registrationNo && v.assignedDriverId) {
+      map.set(v.registrationNo, v.assignedDriverId);
+    }
+  }
+  return map;
+}
+
+/** Cargo rows deduped into trips, with the driver resolved per trip. */
+export function collectTrips(filters: DashboardFilters): Trip[] {
+  const fillDrivers = fillDriverMap();
+  const vehicleDrivers = vehicleDriverMap();
+  const names = driverNameMap();
+  const trips = new Map<string, Trip>();
+  const cargoTypes = getAllCargoSources().map((s) => s.type);
+
+  for (const type of cargoTypes) {
+    if (filters.plantType && type !== filters.plantType) continue;
+    for (const record of getLocalRecordsByType(type)) {
+      const data = record.data;
+      const date = String(data.date ?? "");
+      if (!inRange(date, filters)) continue;
+      const companyId = String(data.billingCompany ?? "");
+      if (filters.companyId && companyId && companyId !== filters.companyId) continue;
+      if (filters.companyId && !companyId) continue;
+      const vehicleNo = String(data.vehicleNo ?? "");
+      if (filters.vehicleNo && vehicleNo !== filters.vehicleNo) continue;
+
+      const key = `${type}|${vehicleNo}|${date}|${String(data.lrNo ?? "")}`;
+      let trip = trips.get(key);
+      if (!trip) {
+        // explicit driver on the row wins; legacy rows resolve via the
+        // diesel fill's driver, then the vehicle's assigned driver
+        const driverId =
+          String(data.driverId ?? "") ||
+          fillDrivers.get(String(data.dieselFillRef ?? "")) ||
+          vehicleDrivers.get(vehicleNo) ||
+          "";
+        trip = {
+          key,
+          plantType: type,
+          date,
+          month: date.slice(0, 7),
+          vehicleNo,
+          lrNo: String(data.lrNo ?? ""),
+          companyId,
+          driverId,
+          driverName: driverId ? (names.get(driverId) ?? driverId) : "",
+          lineCount: 0,
+          totalWt: 0,
+          earning: 0,
+          // trip-level values — taken from the first row only
+          toll: num(data.tollOverloadAmount),
+          dieselUsed: num(data.dieselUsedThisTrip),
+          documentNos: [],
+        };
+        trips.set(key, trip);
+      }
+      trip.lineCount += 1;
+      trip.totalWt = round2(trip.totalWt + num(data.totalWt));
+      trip.earning = round2(trip.earning + num(data.transportAmount));
+      const docNo = String(data.documentNo ?? "");
+      if (docNo && !trip.documentNos.includes(docNo)) trip.documentNos.push(docNo);
+    }
+  }
+
+  const list = Array.from(trips.values());
+  if (filters.driverId) return list.filter((t) => t.driverId === filters.driverId);
+  return list.sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/** Generic filtered read of dated record types (diesel, salary, expenses…). */
+function datedRecords(type: Parameters<typeof getLocalRecordsByType>[0], filters: DashboardFilters, dateKey = "date"): LocalRecord[] {
+  return getLocalRecordsByType(type).filter((r) =>
+    inRange(String(r.data[dateKey] ?? ""), filters)
+  );
+}
+
+export function vehicleSummary(filters: DashboardFilters): VehicleSummaryRow[] {
+  const rows = new Map<string, VehicleSummaryRow>();
+  const get = (vehicleNo: string): VehicleSummaryRow => {
+    let row = rows.get(vehicleNo);
+    if (!row) {
+      row = {
+        vehicleNo,
+        trips: 0,
+        totalWt: 0,
+        earnings: 0,
+        dieselCost: 0,
+        maintenanceCost: 0,
+        toll: 0,
+        profit: 0,
+      };
+      rows.set(vehicleNo, row);
+    }
+    return row;
+  };
+
+  for (const trip of collectTrips(filters)) {
+    const row = get(trip.vehicleNo || "(no vehicle)");
+    row.trips += 1;
+    row.totalWt = round2(row.totalWt + trip.totalWt);
+    row.earnings = round2(row.earnings + trip.earning);
+    row.toll = round2(row.toll + trip.toll);
+  }
+
+  // Company / plant / driver filters scope the view to trip numbers only —
+  // infra earnings and shared vehicle costs (fills, maintenance) carry no
+  // company/plant/driver and would make the filtered profit misleading.
+  const scoped = !!(filters.companyId || filters.plantType || filters.driverId);
+
+  if (!scoped) {
+    for (const r of datedRecords("infra", filters)) {
+      const vehicleNo = String(r.data.vehicleNo ?? "");
+      if (!vehicleNo || (filters.vehicleNo && vehicleNo !== filters.vehicleNo)) continue;
+      get(vehicleNo).earnings = round2(get(vehicleNo).earnings + num(r.data.totalAmount));
+    }
+
+    for (const r of datedRecords("diesel", filters)) {
+      const vehicleNo = String(r.data.vehicleNo ?? "");
+      if (!vehicleNo || (filters.vehicleNo && vehicleNo !== filters.vehicleNo)) continue;
+      get(vehicleNo).dieselCost = round2(
+        get(vehicleNo).dieselCost + num(r.data.fillAmount)
+      );
+    }
+
+    for (const m of getAllMaintenance()) {
+      if (!inRange(m.date, filters)) continue;
+      const vehicleNo = m.vehicleNo;
+      if (!vehicleNo || (filters.vehicleNo && vehicleNo !== filters.vehicleNo)) continue;
+      get(vehicleNo).maintenanceCost = round2(
+        get(vehicleNo).maintenanceCost + num(m.totalCost)
+      );
+    }
+  }
+
+  return Array.from(rows.values())
+    .map((row) => ({
+      ...row,
+      profit: round2(row.earnings - row.dieselCost - row.maintenanceCost - row.toll),
+    }))
+    .sort((a, b) => b.earnings - a.earnings);
+}
+
+export function driverSummary(filters: DashboardFilters): DriverSummaryRow[] {
+  const names = driverNameMap();
+  const rows = new Map<string, DriverSummaryRow>();
+  const get = (driverId: string): DriverSummaryRow => {
+    let row = rows.get(driverId);
+    if (!row) {
+      row = {
+        driverId,
+        driverName: driverId ? (names.get(driverId) ?? driverId) : "(unassigned)",
+        trips: 0,
+        totalWt: 0,
+        earningsHauled: 0,
+        salaryPaid: 0,
+        dailyExpenses: 0,
+        expensesByType: {},
+        totalCost: 0,
+      };
+      rows.set(driverId, row);
+    }
+    return row;
+  };
+
+  for (const trip of collectTrips(filters)) {
+    const row = get(trip.driverId);
+    row.trips += 1;
+    row.totalWt = round2(row.totalWt + trip.totalWt);
+    row.earningsHauled = round2(row.earningsHauled + trip.earning);
+  }
+
+  // Only ids that resolve to an actual driver land here — staff payroll
+  // (accountants, hamals) is aggregated separately by staffPayrollSummary().
+  for (const r of datedRecords("salary", filters, "paymentDate")) {
+    const driverId = String(r.data.driverId ?? "");
+    if (!driverId || !names.has(driverId)) continue;
+    if (filters.driverId && driverId !== filters.driverId) continue;
+    get(driverId).salaryPaid = round2(get(driverId).salaryPaid + num(r.data.amount));
+  }
+
+  for (const r of datedRecords("driver-expense", filters)) {
+    const driverId = String(r.data.driverId ?? "");
+    if (!driverId || !names.has(driverId)) continue;
+    if (filters.driverId && driverId !== filters.driverId) continue;
+    const row = get(driverId);
+    const amount = num(r.data.amount);
+    const type = String(r.data.expenseType ?? "Other") || "Other";
+    row.dailyExpenses = round2(row.dailyExpenses + amount);
+    row.expensesByType[type] = round2((row.expensesByType[type] ?? 0) + amount);
+  }
+
+  return Array.from(rows.values())
+    .map((row) => ({
+      ...row,
+      totalCost: round2(row.salaryPaid + row.dailyExpenses),
+    }))
+    .sort((a, b) => b.trips - a.trips || b.totalCost - a.totalCost);
+}
+
+/** Salary + daily-expense totals for non-driver staff (accountants, hamals, etc). */
+export function staffPayrollSummary(filters: DashboardFilters): StaffPayrollRow[] {
+  const staff = staffInfoMap();
+  const rows = new Map<string, StaffPayrollRow>();
+  const get = (staffId: string): StaffPayrollRow => {
+    let row = rows.get(staffId);
+    if (!row) {
+      const info = staff.get(staffId);
+      row = {
+        staffId,
+        name: info?.name ?? staffId,
+        role: info?.role ?? "",
+        salaryPaid: 0,
+        dailyExpenses: 0,
+        expensesByType: {},
+        totalCost: 0,
+      };
+      rows.set(staffId, row);
+    }
+    return row;
+  };
+
+  for (const r of datedRecords("salary", filters, "paymentDate")) {
+    const staffId = String(r.data.driverId ?? "");
+    if (!staffId || !staff.has(staffId)) continue;
+    get(staffId).salaryPaid = round2(get(staffId).salaryPaid + num(r.data.amount));
+  }
+
+  for (const r of datedRecords("driver-expense", filters)) {
+    const staffId = String(r.data.driverId ?? "");
+    if (!staffId || !staff.has(staffId)) continue;
+    const row = get(staffId);
+    const amount = num(r.data.amount);
+    const type = String(r.data.expenseType ?? "Other") || "Other";
+    row.dailyExpenses = round2(row.dailyExpenses + amount);
+    row.expensesByType[type] = round2((row.expensesByType[type] ?? 0) + amount);
+  }
+
+  return Array.from(rows.values())
+    .map((row) => ({
+      ...row,
+      totalCost: round2(row.salaryPaid + row.dailyExpenses),
+    }))
+    .sort((a, b) => b.totalCost - a.totalCost);
+}
+
+/** Every YYYY-MM between from and to, inclusive. */
+export function monthRange(fromMonth: string, toMonth: string): string[] {
+  const months: string[] = [];
+  const [fy, fm] = fromMonth.split("-").map(Number);
+  const [ty, tm] = toMonth.split("-").map(Number);
+  if (!fy || !fm || !ty || !tm) return months;
+  const cursor = new Date(fy, fm - 1, 1);
+  const end = new Date(ty, tm - 1, 1);
+  while (cursor <= end && months.length < 120) {
+    months.push(
+      `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`
+    );
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return months;
+}
+
+export function monthlyPL(filters: DashboardFilters): MonthlyPLRow[] {
+  const rows = new Map<string, MonthlyPLRow>();
+  for (const month of monthRange(filters.fromMonth, filters.toMonth)) {
+    rows.set(month, {
+      month,
+      revenue: 0,
+      diesel: 0,
+      toll: 0,
+      maintenance: 0,
+      salary: 0,
+      driverExpenses: 0,
+      profit: 0,
+      revenueByCompany: {},
+    });
+  }
+  const get = (date: string) => rows.get(date.slice(0, 7));
+
+  for (const trip of collectTrips(filters)) {
+    const row = get(trip.date);
+    if (!row) continue;
+    row.revenue = round2(row.revenue + trip.earning);
+    row.toll = round2(row.toll + trip.toll);
+    if (trip.companyId) {
+      row.revenueByCompany[trip.companyId] = round2(
+        (row.revenueByCompany[trip.companyId] ?? 0) + trip.earning
+      );
+    }
+  }
+
+  // Company/plant/driver filters scope the P/L to trip revenue+toll only —
+  // shared costs (fills, maintenance, salaries) can't be split by company.
+  const scoped = !!(filters.companyId || filters.plantType || filters.driverId);
+
+  if (!scoped) {
+    for (const r of datedRecords("infra", filters)) {
+      const row = get(String(r.data.date ?? ""));
+      if (!row) continue;
+      if (filters.vehicleNo && String(r.data.vehicleNo ?? "") !== filters.vehicleNo) continue;
+      row.revenue = round2(row.revenue + num(r.data.totalAmount));
+    }
+    for (const r of datedRecords("diesel", filters)) {
+      const row = get(String(r.data.date ?? ""));
+      if (!row) continue;
+      if (filters.vehicleNo && String(r.data.vehicleNo ?? "") !== filters.vehicleNo) continue;
+      row.diesel = round2(row.diesel + num(r.data.fillAmount));
+    }
+    for (const m of getAllMaintenance()) {
+      const row = get(m.date);
+      if (!row) continue;
+      if (filters.vehicleNo && m.vehicleNo !== filters.vehicleNo) continue;
+      row.maintenance = round2(row.maintenance + num(m.totalCost));
+    }
+    if (!filters.vehicleNo) {
+      for (const r of datedRecords("salary", filters, "paymentDate")) {
+        const row = get(String(r.data.paymentDate ?? ""));
+        if (row) row.salary = round2(row.salary + num(r.data.amount));
+      }
+      for (const r of datedRecords("driver-expense", filters)) {
+        const row = get(String(r.data.date ?? ""));
+        if (row) row.driverExpenses = round2(row.driverExpenses + num(r.data.amount));
+      }
+    }
+  }
+
+  return Array.from(rows.values()).map((row) => ({
+    ...row,
+    profit: round2(
+      row.revenue - row.diesel - row.toll - row.maintenance - row.salary - row.driverExpenses
+    ),
+  }));
+}
+
+export interface PLTotals {
+  revenue: number;
+  diesel: number;
+  toll: number;
+  maintenance: number;
+  salary: number;
+  driverExpenses: number;
+  expenses: number;
+  profit: number;
+  trips: number;
+  totalWt: number;
+}
+
+export function plTotals(filters: DashboardFilters): PLTotals {
+  const months = monthlyPL(filters);
+  const trips = collectTrips(filters);
+  const sum = (pick: (r: MonthlyPLRow) => number) =>
+    round2(months.reduce((acc, r) => acc + pick(r), 0));
+  const revenue = sum((r) => r.revenue);
+  const diesel = sum((r) => r.diesel);
+  const toll = sum((r) => r.toll);
+  const maintenance = sum((r) => r.maintenance);
+  const salary = sum((r) => r.salary);
+  const driverExpenses = sum((r) => r.driverExpenses);
+  const expenses = round2(diesel + toll + maintenance + salary + driverExpenses);
+  return {
+    revenue,
+    diesel,
+    toll,
+    maintenance,
+    salary,
+    driverExpenses,
+    expenses,
+    profit: round2(revenue - expenses),
+    trips: trips.length,
+    totalWt: round2(trips.reduce((acc, t) => acc + t.totalWt, 0)),
+  };
+}

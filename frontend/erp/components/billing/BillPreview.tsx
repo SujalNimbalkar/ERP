@@ -23,12 +23,23 @@ function CompanyHeader({ bill }: { bill: BillData }) {
   if (!company) return null;
   return (
     <>
-      {company.tagline && (
-        <p className="text-center text-xs">{company.tagline}</p>
+      {company.headerImage ? (
+        // eslint-disable-next-line @next/next/no-img-element -- static letterhead must print pixel-identical
+        <img
+          src={company.headerImage}
+          alt={company.name}
+          className="w-full border border-black"
+        />
+      ) : (
+        <>
+          {company.tagline && (
+            <p className="text-center text-xs">{company.tagline}</p>
+          )}
+          <h2 className="border border-black px-2 py-1 text-center text-2xl font-bold">
+            {company.name}
+          </h2>
+        </>
       )}
-      <h2 className="border border-black px-2 py-1 text-center text-2xl font-bold">
-        {company.name}
-      </h2>
       <p className="border border-black border-t-0 px-2 py-0.5 text-center text-sm">
         {company.addressLine}
       </p>
