@@ -1,5 +1,5 @@
 import { getLocalRecordsByType } from "./localStore";
-import { getAllCargoSources, type CargoSourceType } from "./sheetConfig";
+import { type CargoSourceType } from "./sheetConfig";
 import { getAllMaintenance, getAllVehicles } from "./vehicleStore";
 import { getAllStaff } from "./staffStore";
 import { round2 } from "./billing";
@@ -18,9 +18,9 @@ import type { LocalRecord } from "./types";
  */
 
 export interface DashboardFilters {
-  /** Inclusive YYYY-MM range */
-  fromMonth: string;
-  toMonth: string;
+  /** Inclusive YYYY-MM-DD range */
+  fromDate: string;
+  toDate: string;
   companyId?: string;
   vehicleNo?: string;
   driverId?: string;
@@ -96,9 +96,8 @@ function num(v: string | number | undefined): number {
 }
 
 function inRange(date: string, filters: DashboardFilters): boolean {
-  const month = date.slice(0, 7);
-  if (!month) return false;
-  return month >= filters.fromMonth && month <= filters.toMonth;
+  if (!date) return false;
+  return date >= filters.fromDate && date <= filters.toDate;
 }
 
 /** driverId → name map from the Drivers records. */
@@ -154,56 +153,54 @@ export function collectTrips(filters: DashboardFilters): Trip[] {
   const vehicleDrivers = vehicleDriverMap();
   const names = driverNameMap();
   const trips = new Map<string, Trip>();
-  const cargoTypes = getAllCargoSources().map((s) => s.type);
 
-  for (const type of cargoTypes) {
+  for (const record of getLocalRecordsByType("cargo")) {
+    const data = record.data;
+    const type = String(data.plantType ?? "");
     if (filters.plantType && type !== filters.plantType) continue;
-    for (const record of getLocalRecordsByType(type)) {
-      const data = record.data;
-      const date = String(data.date ?? "");
-      if (!inRange(date, filters)) continue;
-      const companyId = String(data.billingCompany ?? "");
-      if (filters.companyId && companyId && companyId !== filters.companyId) continue;
-      if (filters.companyId && !companyId) continue;
-      const vehicleNo = String(data.vehicleNo ?? "");
-      if (filters.vehicleNo && vehicleNo !== filters.vehicleNo) continue;
+    const date = String(data.date ?? "");
+    if (!inRange(date, filters)) continue;
+    const companyId = String(data.billingCompany ?? "");
+    if (filters.companyId && companyId && companyId !== filters.companyId) continue;
+    if (filters.companyId && !companyId) continue;
+    const vehicleNo = String(data.vehicleNo ?? "");
+    if (filters.vehicleNo && vehicleNo !== filters.vehicleNo) continue;
 
-      const key = `${type}|${vehicleNo}|${date}|${String(data.lrNo ?? "")}`;
-      let trip = trips.get(key);
-      if (!trip) {
-        // explicit driver on the row wins; legacy rows resolve via the
-        // diesel fill's driver, then the vehicle's assigned driver
-        const driverId =
-          String(data.driverId ?? "") ||
-          fillDrivers.get(String(data.dieselFillRef ?? "")) ||
-          vehicleDrivers.get(vehicleNo) ||
-          "";
-        trip = {
-          key,
-          plantType: type,
-          date,
-          month: date.slice(0, 7),
-          vehicleNo,
-          lrNo: String(data.lrNo ?? ""),
-          companyId,
-          driverId,
-          driverName: driverId ? (names.get(driverId) ?? driverId) : "",
-          lineCount: 0,
-          totalWt: 0,
-          earning: 0,
-          // trip-level values — taken from the first row only
-          toll: num(data.tollOverloadAmount),
-          dieselUsed: num(data.dieselUsedThisTrip),
-          documentNos: [],
-        };
-        trips.set(key, trip);
-      }
-      trip.lineCount += 1;
-      trip.totalWt = round2(trip.totalWt + num(data.totalWt));
-      trip.earning = round2(trip.earning + num(data.transportAmount));
-      const docNo = String(data.documentNo ?? "");
-      if (docNo && !trip.documentNos.includes(docNo)) trip.documentNos.push(docNo);
+    const key = `${type}|${vehicleNo}|${date}|${String(data.lrNo ?? "")}`;
+    let trip = trips.get(key);
+    if (!trip) {
+      // explicit driver on the row wins; legacy rows resolve via the
+      // diesel fill's driver, then the vehicle's assigned driver
+      const driverId =
+        String(data.driverId ?? "") ||
+        fillDrivers.get(String(data.dieselFillRef ?? "")) ||
+        vehicleDrivers.get(vehicleNo) ||
+        "";
+      trip = {
+        key,
+        plantType: type,
+        date,
+        month: date.slice(0, 7),
+        vehicleNo,
+        lrNo: String(data.lrNo ?? ""),
+        companyId,
+        driverId,
+        driverName: driverId ? (names.get(driverId) ?? driverId) : "",
+        lineCount: 0,
+        totalWt: 0,
+        earning: 0,
+        // trip-level values — taken from the first row only
+        toll: num(data.tollOverloadAmount),
+        dieselUsed: num(data.dieselUsedThisTrip),
+        documentNos: [],
+      };
+      trips.set(key, trip);
     }
+    trip.lineCount += 1;
+    trip.totalWt = round2(trip.totalWt + num(data.totalWt));
+    trip.earning = round2(trip.earning + num(data.transportAmount));
+    const docNo = String(data.documentNo ?? "");
+    if (docNo && !trip.documentNos.includes(docNo)) trip.documentNos.push(docNo);
   }
 
   const list = Array.from(trips.values());
@@ -406,7 +403,7 @@ export function monthRange(fromMonth: string, toMonth: string): string[] {
 
 export function monthlyPL(filters: DashboardFilters): MonthlyPLRow[] {
   const rows = new Map<string, MonthlyPLRow>();
-  for (const month of monthRange(filters.fromMonth, filters.toMonth)) {
+  for (const month of monthRange(filters.fromDate.slice(0, 7), filters.toDate.slice(0, 7))) {
     rows.set(month, {
       month,
       revenue: 0,
@@ -451,6 +448,7 @@ export function monthlyPL(filters: DashboardFilters): MonthlyPLRow[] {
       row.diesel = round2(row.diesel + num(r.data.fillAmount));
     }
     for (const m of getAllMaintenance()) {
+      if (!inRange(m.date, filters)) continue;
       const row = get(m.date);
       if (!row) continue;
       if (filters.vehicleNo && m.vehicleNo !== filters.vehicleNo) continue;

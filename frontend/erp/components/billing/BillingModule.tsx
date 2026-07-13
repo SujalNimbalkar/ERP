@@ -132,11 +132,11 @@ export function BillingModule() {
   useEffect(() => {
     const syncRecords = () => setRecordsVersion((v) => v + 1);
     window.addEventListener("sahyadri-local-update", syncRecords);
-    window.addEventListener("sahyadri-cargo-source-update", syncRecords);
+    window.addEventListener("sahyadri-location-update", syncRecords);
     const offBills = onBillsUpdate(() => setSavedBills(getAllBills()));
     return () => {
       window.removeEventListener("sahyadri-local-update", syncRecords);
-      window.removeEventListener("sahyadri-cargo-source-update", syncRecords);
+      window.removeEventListener("sahyadri-location-update", syncRecords);
       offBills();
     };
   }, []);

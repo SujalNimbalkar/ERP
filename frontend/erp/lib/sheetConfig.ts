@@ -1,6 +1,5 @@
 import { COMPANY_SELECT_OPTIONS } from "./companies";
-import { getCustomCargoSources } from "./cargoSourceStore";
-import { getAllPartyNames } from "./partyStore";
+import { getCargoSourceLocations, getVendorOnlyNames } from "./locationStore";
 import type { FieldConfig, FieldSection, ModuleConfig, SheetType } from "./types";
 
 /** Shared field configs — reused across sections/arrays below instead of redeclaring per module. */
@@ -75,7 +74,7 @@ export const MODULES: ModuleConfig[] = [
   {
     id: "parties",
     label: "Plants & Vendors",
-    description: "Add cargo plants (new sources) and delivery vendors (destinations)",
+    description: "One list of places — flag any of them as a Cargo Plant origin",
   },
   {
     id: "vehicles",
@@ -90,12 +89,12 @@ export const MODULES: ModuleConfig[] = [
 ];
 
 export const BUILT_IN_CARGO_SOURCES = [
-  { type: "cargo-h19", label: "H19 - Paranjape Satara", sheetTab: "H19" },
-  { type: "cargo-j14", label: "J14 - Paranjape Satara", sheetTab: "J14" },
-  { type: "cargo-j15-j16", label: "J15 - J16 - Paranjape Satara", sheetTab: "J15 -  J16" },
-  { type: "cargo-matoshri", label: "Matoshri Enterprise - Shirwal", sheetTab: "Matoshri enterprise" },
-  { type: "cargo-minerva", label: "Minerva Enterprises - Kolhapur", sheetTab: "Minerva Enterprises" },
-  { type: "cargo-machine-shop", label: "Machine Shop - Paranjape Shirwal", sheetTab: "Machine Shop - Shirwal" },
+  { type: "cargo-h19", label: "H19 - Paranjape Satara" },
+  { type: "cargo-j14", label: "J14 - Paranjape Satara" },
+  { type: "cargo-j15-j16", label: "J15 - J16 - Paranjape Satara" },
+  { type: "cargo-matoshri", label: "Matoshri Enterprise - Shirwal" },
+  { type: "cargo-minerva", label: "Minerva Enterprises - Kolhapur" },
+  { type: "cargo-machine-shop", label: "Machine Shop - Paranjape Shirwal" },
 ] as const;
 
 export type CargoSourceType = string;
@@ -103,23 +102,27 @@ export type CargoSourceType = string;
 export interface CargoSource {
   type: CargoSourceType;
   label: string;
-  sheetTab: string;
 }
 
-/** Built-in plants + any custom plants added from the Plants & Vendors module. */
+/** Built-in plants + any custom locations flagged as a Cargo Plant. */
 export function getAllCargoSources(): CargoSource[] {
-  return [...BUILT_IN_CARGO_SOURCES, ...getCustomCargoSources()];
+  return [
+    ...BUILT_IN_CARGO_SOURCES,
+    ...getCargoSourceLocations().map((l) => ({ type: l.cargoType as string, label: l.name })),
+  ];
 }
 
 /**
  * Destinations for a given origin: every other known plant (built-in + custom)
- * plus every custom delivery vendor/party — computed, not hand-maintained.
+ * plus every destination-only location — computed, not hand-maintained.
+ * Plant-flagged locations already come in via `otherPlants`, so nothing
+ * appears twice even though both lists live in the same store now.
  */
 export function getCargoDestinationsFor(sourceType: CargoSourceType): string[] {
   const otherPlants = getAllCargoSources()
     .filter((s) => s.type !== sourceType)
     .map((s) => s.label);
-  return [...otherPlants, ...getAllPartyNames()];
+  return [...otherPlants, ...getVendorOnlyNames()];
 }
 
 export function getCargoRouteDefaults(sourceType: CargoSourceType) {

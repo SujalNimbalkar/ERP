@@ -66,8 +66,9 @@ export function collectBillLines(
   plantCode: string
 ): BillLineItem[] {
   if (!month) return [];
-  return getLocalRecordsByType(plantType)
+  return getLocalRecordsByType("cargo")
     .filter((record) => {
+      if (String(record.data.plantType ?? "") !== plantType) return false;
       if (!matchesCompany(record, companyId)) return false;
       const date = String(record.data.date ?? "");
       if (!date.startsWith(month)) return false;
@@ -136,7 +137,8 @@ export function suggestBillDescription(
   categoryId: string
 ): string {
   const routes = new Set<string>();
-  for (const record of getLocalRecordsByType(plantType)) {
+  for (const record of getLocalRecordsByType("cargo")) {
+    if (String(record.data.plantType ?? "") !== plantType) continue;
     if (!matchesCompany(record, companyId)) continue;
     const date = String(record.data.date ?? "");
     if (!date.startsWith(month)) continue;

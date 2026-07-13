@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { FieldConfig, FieldSection, SheetType } from "@/lib/types";
+import type { FieldConfig, FieldSection } from "@/lib/types";
 import { submitToSheet } from "@/lib/api";
 import {
   CARGO_FIELDS,
@@ -54,11 +54,26 @@ interface InvoiceValues {
   date: string;
   /** Receiving-stamp date for THIS invoice — optional */
   receivedDate: string;
+  /** Origin plant for THIS invoice — defaults to the active tab, but a trip
+   * can mix invoices from different plants (e.g. H19 and J14 both to Machine Shop). */
+  fromType: string;
+  /** Destination for THIS invoice — options depend on this invoice's own fromType. */
+  toParty: string;
   lines: MaterialLineValues[];
 }
 
+/** Trip-level fields only — From/To moved to each invoice (see InvoiceValues). */
 const TRIP_DETAIL_SECTIONS: FieldSection[] = CARGO_SECTIONS.filter(
   (section) => section.id === "route" || section.id === "transport"
+).map((section) =>
+  section.id === "route"
+    ? {
+        ...section,
+        fields: section.fields.filter(
+          (f) => f.name !== "fromLocation" && f.name !== "toParty"
+        ),
+      }
+    : section
 );
 
 const EXPENSE_SECTION = CARGO_SECTIONS.find((section) => section.id === "expenses");
@@ -97,27 +112,31 @@ function createMaterialLine(): MaterialLineValues {
   };
 }
 
-function createInvoice(): InvoiceValues {
+function createInvoice(fromType: string): InvoiceValues {
   return {
     id: crypto.randomUUID(),
     documentNo: "",
     date: "",
     receivedDate: "",
+    fromType,
+    toParty: "",
     lines: [createMaterialLine()],
   };
 }
 
-function emptySourceValues(source: CargoSource): Record<string, string> {
-  return applySourceRoute(emptyValues(CARGO_FIELDS), source.type);
+function emptySourceValues(): Record<string, string> {
+  return emptyValues(CARGO_FIELDS);
 }
 
-function applySourceRoute(
-  values: Record<string, string>,
-  sourceType: CargoSource["type"]
-): Record<string, string> {
-  const { fromLocation, toOptions } = getCargoRouteDefaults(sourceType);
-  const toParty = toOptions.includes(values.toParty) ? values.toParty : "";
-  return { ...values, fromLocation, toParty };
+/** Keeps an invoice's To valid for its (possibly just-changed) From — clears
+ * it if it no longer appears in the new From's destination options. */
+function applyInvoiceRoute(invoice: InvoiceValues, name: "fromType" | "toParty", value: string): InvoiceValues {
+  const updated = { ...invoice, [name]: value };
+  if (name === "fromType") {
+    const { toOptions } = getCargoRouteDefaults(value);
+    updated.toParty = toOptions.includes(updated.toParty) ? updated.toParty : "";
+  }
+  return updated;
 }
 
 function applyMaterialDefaultsByCode(
@@ -214,8 +233,10 @@ function buildCargoPayloads(
   const totalTripWeight = getTotalTripWeight(weighted);
   const tripCalc = calcCargoTransportByWeight(totalTripWeight);
 
-  return weighted.flatMap((invoice) =>
-    invoice.lines.map((line) => {
+  return weighted.flatMap((invoice) => {
+    const fromLabel = getAllCargoSources().find((s) => s.type === invoice.fromType)?.label ?? "";
+
+    return invoice.lines.map((line) => {
       const lineWeight = Number(line.totalWt || 0);
       const { rate, rateTier } = getLineFinalRate(line, tripCalc);
       const transportRate = rate ?? "";
@@ -226,6 +247,9 @@ function buildCargoPayloads(
 
       return parseFormData({
         ...values,
+        plantType: invoice.fromType,
+        fromLocation: fromLabel,
+        toParty: invoice.toParty,
         documentNo: invoice.documentNo,
         date: invoice.date,
         // receipt stamp is per invoice (date) and per material line (qty)
@@ -242,8 +266,8 @@ function buildCargoPayloads(
         transportAmount: transportAmount === "" ? "" : String(transportAmount),
         rateTier,
       });
-    })
-  );
+    });
+  });
 }
 
 function findDuplicateDocumentNo(
@@ -263,9 +287,10 @@ function findDuplicateDocumentNo(
 
     const existing = findRecordsByDocumentNo(raw);
     if (existing.length > 0) {
+      const existingPlantType = String(existing[0].data.plantType ?? existing[0].type);
       const sourceLabel =
-        getAllCargoSources().find((s) => s.type === existing[0].type)?.label ??
-        existing[0].type;
+        getAllCargoSources().find((s) => s.type === existingPlantType)?.label ??
+        existingPlantType;
       return { documentNo: raw, source: sourceLabel };
     }
   }
@@ -324,54 +349,34 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function resolveFieldConfig(
-  field: FieldConfig,
-  sourceType: CargoSource["type"]
-): FieldConfig {
-  if (field.name === "toParty") {
-    return {
-      ...field,
-      options: getCargoRouteDefaults(sourceType).toOptions,
-    };
-  }
-  return field;
-}
-
 export function CargoTransportForm() {
   const [cargoSources, setCargoSources] = useState<CargoSource[]>(() => getAllCargoSources());
   const [activeSource, setActiveSource] = useState<CargoSource>(
     () => getAllCargoSources()[0]
   );
-  const [values, setValues] = useState<Record<string, string>>(() =>
-    emptySourceValues(getAllCargoSources()[0])
-  );
-  const [invoices, setInvoices] = useState<InvoiceValues[]>([createInvoice()]);
+  const [values, setValues] = useState<Record<string, string>>(() => emptySourceValues());
+  const [invoices, setInvoices] = useState<InvoiceValues[]>(() => [
+    createInvoice(getAllCargoSources()[0].type),
+  ]);
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [vehicleNoOptions, setVehicleNoOptions] = useState(() => getVehicleNoOptions());
   const [driverOptions, setDriverOptions] = useState(() => getDriverOptions());
-  const [destinationsVersion, setDestinationsVersion] = useState(0);
   const { confirmOpen, requestConfirm, confirmSave, cancel, toast, notify, dismissToast } =
     useConfirmSave();
 
   useEffect(() => {
     const sync = () => setVehicleNoOptions(getVehicleNoOptions());
     const syncDrivers = () => setDriverOptions(getDriverOptions());
-    const syncCargoSources = () => {
-      setCargoSources(getAllCargoSources());
-      setDestinationsVersion((v) => v + 1);
-    };
-    const syncParties = () => setDestinationsVersion((v) => v + 1);
+    const syncLocations = () => setCargoSources(getAllCargoSources());
     window.addEventListener("sahyadri-vehicle-update", sync);
     window.addEventListener("sahyadri-local-update", syncDrivers);
-    window.addEventListener("sahyadri-cargo-source-update", syncCargoSources);
-    window.addEventListener("sahyadri-party-update", syncParties);
+    window.addEventListener("sahyadri-location-update", syncLocations);
     return () => {
       window.removeEventListener("sahyadri-vehicle-update", sync);
       window.removeEventListener("sahyadri-local-update", syncDrivers);
-      window.removeEventListener("sahyadri-cargo-source-update", syncCargoSources);
-      window.removeEventListener("sahyadri-party-update", syncParties);
+      window.removeEventListener("sahyadri-location-update", syncLocations);
     };
   }, []);
 
@@ -380,20 +385,19 @@ export function CargoTransportForm() {
       TRIP_DETAIL_SECTIONS.map((section) => ({
         ...section,
         fields: section.fields.map((f) => {
-          const resolved = resolveFieldConfig(f, activeSource.type);
           if (f.name === "vehicleNo" && vehicleNoOptions.length > 0) {
-            return { ...resolved, type: "select" as const, options: vehicleNoOptions };
+            return { ...f, type: "select" as const, options: vehicleNoOptions };
           }
           if (f.name === "driverId") {
             return {
-              ...resolved,
+              ...f,
               options: driverOptions.map((d) => ({ value: d.value, label: d.label })),
             };
           }
-          return resolved;
+          return f;
         }),
       })),
-    [activeSource.type, vehicleNoOptions, driverOptions, destinationsVersion]
+    [vehicleNoOptions, driverOptions]
   );
 
   const tripFields = useMemo(() => tripSections.flatMap((s) => s.fields), [tripSections]);
@@ -481,6 +485,19 @@ export function CargoTransportForm() {
     resetStatus();
   }
 
+  function handleInvoiceRouteChange(
+    invoiceId: string,
+    name: "fromType" | "toParty",
+    value: string
+  ) {
+    setInvoices((prev) =>
+      prev.map((invoice) =>
+        invoice.id === invoiceId ? applyInvoiceRoute(invoice, name, value) : invoice
+      )
+    );
+    resetStatus();
+  }
+
   function handleMaterialLineChange(
     invoiceId: string,
     lineId: string,
@@ -515,7 +532,7 @@ export function CargoTransportForm() {
   }
 
   function addInvoice() {
-    setInvoices((prev) => [...prev, createInvoice()]);
+    setInvoices((prev) => [...prev, createInvoice(activeSource.type)]);
   }
 
   function removeInvoice(invoiceId: string) {
@@ -550,8 +567,8 @@ export function CargoTransportForm() {
 
   function switchSource(source: CargoSource) {
     setActiveSource(source);
-    setValues(emptySourceValues(source));
-    setInvoices([createInvoice()]);
+    setValues(emptySourceValues());
+    setInvoices([createInvoice(source.type)]);
     setStatus("idle");
     setMessage("");
   }
@@ -563,14 +580,14 @@ export function CargoTransportForm() {
 
     try {
       const result = await submitToSheet({
-        type: activeSource.type as SheetType,
+        type: "cargo",
         records,
       });
 
       if (result.success) {
         notify(result.message);
-        setValues(emptySourceValues(activeSource));
-        setInvoices([createInvoice()]);
+        setValues(emptySourceValues());
+        setInvoices([createInvoice(activeSource.type)]);
       } else {
         setStatus("error");
         setMessage(result.message);
@@ -584,8 +601,8 @@ export function CargoTransportForm() {
   }
 
   function handleDiscard() {
-    setValues(emptySourceValues(activeSource));
-    setInvoices([createInvoice()]);
+    setValues(emptySourceValues());
+    setInvoices([createInvoice(activeSource.type)]);
     cancel();
     notify("Entry deleted — form cleared.", "error");
   }
@@ -627,14 +644,15 @@ export function CargoTransportForm() {
           ))}
         </div>
         <p className="mt-1.5 text-xs text-black">
-          Saving to sheet: <span className="font-semibold">{activeSource.label}</span>
+          New invoices default to <span className="font-semibold">{activeSource.label}</span> —
+          change From/To per invoice below if this trip covers more than one plant.
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-3">
         <FormSection
           title="1. Trip Details"
-          description="Route and vehicle for this trip."
+          description="Vehicle and driver for this trip."
           columns={3}
         >
           {tripFields.map((field) => (
@@ -672,17 +690,46 @@ export function CargoTransportForm() {
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                   <FormField
                     field={{
+                      name: "fromType",
+                      label: "From",
+                      type: "select",
+                      required: true,
+                      options: cargoSources.map((s) => ({ value: s.type, label: s.label })),
+                    }}
+                    id={`field-${invoice.id}-fromType`}
+                    value={invoice.fromType}
+                    onChange={(_, value) => handleInvoiceRouteChange(invoice.id, "fromType", value)}
+                  />
+                  <FormField
+                    field={{
+                      name: "toParty",
+                      label: "To",
+                      type: "select",
+                      required: true,
+                      options: getCargoRouteDefaults(invoice.fromType).toOptions,
+                    }}
+                    id={`field-${invoice.id}-toParty`}
+                    value={invoice.toParty}
+                    onChange={(_, value) => handleInvoiceRouteChange(invoice.id, "toParty", value)}
+                  />
+                </div>
+
+                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  <FormField
+                    field={{
                       name: "documentNo",
                       label: "Invoice / DC No",
                       type: "text",
                       required: true,
                       placeholder: "e.g. 5900089218",
                     }}
+                    id={`field-${invoice.id}-documentNo`}
                     value={invoice.documentNo}
                     onChange={(_, value) => handleInvoiceChange(invoice.id, "documentNo", value)}
                   />
                   <FormField
                     field={{ name: "date", label: "Date", type: "date", required: true }}
+                    id={`field-${invoice.id}-date`}
                     value={invoice.date}
                     onChange={(_, value) => handleInvoiceChange(invoice.id, "date", value)}
                   />
@@ -692,6 +739,7 @@ export function CargoTransportForm() {
                       label: "Received Date (optional)",
                       type: "date",
                     }}
+                    id={`field-${invoice.id}-receivedDate`}
                     value={invoice.receivedDate}
                     onChange={(_, value) => handleInvoiceChange(invoice.id, "receivedDate", value)}
                   />
@@ -732,6 +780,7 @@ export function CargoTransportForm() {
                             >
                               <FormField
                                 field={field}
+                                id={`field-${line.id}-${field.name}`}
                                 value={displayValue}
                                 onChange={(_, value) =>
                                   handleMaterialLineChange(
@@ -868,14 +917,14 @@ export function CargoTransportForm() {
           disabled={submitting}
           className="border border-black bg-white px-5 py-2.5 text-sm font-medium text-black disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {submitting ? "Saving…" : `Save to ${activeSource.label}`}
+          {submitting ? "Saving…" : "Save Trip"}
         </button>
       </form>
 
       <ConfirmDialog
         open={confirmOpen}
         title="Confirm Trip Entry"
-        message={`Check the entry below, then save to ${activeSource.label}.`}
+        message="Check the entry below, then save."
         confirmLabel="Confirm & Save"
         cancelLabel="Edit"
         deleteLabel="Delete Entry"
@@ -887,8 +936,6 @@ export function CargoTransportForm() {
           <div>
             <p className="mb-1 text-xs font-semibold text-black">Trip Details</p>
             <ReviewRow label="Billing Company" value={companyName(values.billingCompany)} />
-            <ReviewRow label="From" value={values.fromLocation} />
-            <ReviewRow label="To" value={values.toParty} />
             <ReviewRow label="Vehicle No." value={values.vehicleNo} />
             <ReviewRow label="L.R. No." value={values.lrNo} />
             <ReviewRow
@@ -904,6 +951,12 @@ export function CargoTransportForm() {
                 {invoice.date ? `, ${invoice.date}` : ""}
                 {invoice.receivedDate ? ` · received ${invoice.receivedDate}` : ""}
               </p>
+              <ReviewRow
+                label="Route"
+                value={`${
+                  cargoSources.find((s) => s.type === invoice.fromType)?.label ?? invoice.fromType
+                } → ${invoice.toParty}`}
+              />
               <table className="w-full border-collapse text-xs text-black">
                 <thead>
                   <tr>

@@ -2,8 +2,7 @@ import { replaceWithSheetRecords } from "./localStore";
 import { replaceWithSheetVehicles } from "./vehicleStore";
 import { replaceWithSheetMaterials } from "./materialStore";
 import { replaceWithSheetBills } from "./billingStore";
-import { replaceWithSheetParties } from "./partyStore";
-import { getCustomCargoSources, replaceWithSheetCargoSources } from "./cargoSourceStore";
+import { replaceWithSheetLocations } from "./locationStore";
 import { replaceWithSheetStaff } from "./staffStore";
 import type { AuditEntry } from "./auditLog";
 import type { SheetType } from "./types";
@@ -19,16 +18,11 @@ import type { SheetType } from "./types";
 const GAS_URL = process.env.NEXT_PUBLIC_GAS_WEB_APP_URL ?? "";
 const LAST_FETCH_KEY = "sahyadri_last_sheet_fetch";
 
-/** Built-in types that live in the shared records store (one row = one form entry).
- * Custom Cargo plant types are appended at fetch time, once the current
- * custom-source list has been refreshed from the Sheet. */
-const BASE_RECORD_TYPES: SheetType[] = [
-  "cargo-h19",
-  "cargo-j14",
-  "cargo-j15-j16",
-  "cargo-matoshri",
-  "cargo-minerva",
-  "cargo-machine-shop",
+/** Types that live in the shared records store (one row = one form entry).
+ * Every Cargo plant shares the single "cargo" type/tab (see `plantType` on
+ * each row) — there's no per-plant type to enumerate anymore. */
+const RECORD_TYPES: SheetType[] = [
+  "cargo",
   "infra",
   "pallets",
   "diesel",
@@ -40,12 +34,7 @@ const BASE_RECORD_TYPES: SheetType[] = [
 
 /** Short labels for the per-tab row counts in the refresh message. */
 const TYPE_LABELS: Record<string, string> = {
-  "cargo-h19": "H19",
-  "cargo-j14": "J14",
-  "cargo-j15-j16": "J15-J16",
-  "cargo-matoshri": "Matoshri",
-  "cargo-minerva": "Minerva",
-  "cargo-machine-shop": "Machine Shop",
+  cargo: "Cargo Trips",
   infra: "Infra",
   pallets: "Pallets",
   diesel: "Diesel",
@@ -57,8 +46,7 @@ const TYPE_LABELS: Record<string, string> = {
   "vehicle-master": "Vehicles",
   "vehicle-maintenance": "Maintenance",
   bills: "Bills",
-  parties: "Delivery Vendors",
-  "cargo-sources": "Cargo Plants",
+  locations: "Plants & Vendors",
   staff: "Staff",
 };
 
@@ -103,21 +91,16 @@ export async function refreshFromSheets(): Promise<RefreshResult> {
   // `missingTypes` types are skipped below so their local cache is left alone.
   const missingTypes = new Set(json.missingTypes ?? []);
 
-  // Refresh custom master lists first — the cargo-source list decides which
-  // extra "cargo-*" tabs to also pull trip rows for below.
-  if (!missingTypes.has("cargo-sources")) {
-    replaceWithSheetCargoSources(data["cargo-sources"] ?? []);
-  }
-  if (!missingTypes.has("parties")) {
-    replaceWithSheetParties(data["parties"] ?? []);
+  // Refresh the custom locations list (plants + vendors) so dropdowns stay current.
+  if (!missingTypes.has("locations")) {
+    replaceWithSheetLocations(data["locations"] ?? []);
   }
 
   // Only types whose tab was actually found are included here — omitting a
   // type's key entirely makes `replaceWithSheetRecords` leave its existing
   // local records untouched (see its "kept" logic in localStore.ts).
-  const recordTypes = [...BASE_RECORD_TYPES, ...getCustomCargoSources().map((s) => s.type)];
   const recordRows: Partial<Record<SheetType, SheetRow[]>> = {};
-  for (const type of recordTypes) {
+  for (const type of RECORD_TYPES) {
     if (missingTypes.has(type)) continue;
     recordRows[type] = Array.isArray(data[type]) ? data[type] : [];
   }

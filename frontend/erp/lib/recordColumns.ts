@@ -37,9 +37,7 @@ export const RECORD_VIEWS: RecordViewConfig[] = [
   {
     id: "cargo",
     label: "Cargo Transport",
-    get types() {
-      return getAllCargoSources().map((s) => s.type);
-    },
+    types: ["cargo"],
     columns: [
       ...META_COLUMNS,
       ID_COLUMN,
@@ -88,6 +86,15 @@ export function sheetTypeLabel(type: SheetType): string {
   return getAllCargoSources().find((s) => s.type === type)?.label ?? type;
 }
 
+/** Source label for a record — for cargo rows this resolves the plant via
+ * `data.plantType` (all cargo rows share the one `"cargo"` SheetType). */
+export function recordSourceLabel(record: LocalRecord): string {
+  if (record.type === "cargo") {
+    return sheetTypeLabel(String(record.data.plantType ?? record.type));
+  }
+  return sheetTypeLabel(record.type);
+}
+
 export function filterRecordsForView(
   records: LocalRecord[],
   view: RecordViewConfig
@@ -109,7 +116,7 @@ export function getCellValue(record: LocalRecord, key: string): string {
       return record.savedAt;
     }
   }
-  if (key === "_sheet") return sheetTypeLabel(record.type);
+  if (key === "_sheet") return recordSourceLabel(record);
   const value = record.data[key];
   if (value === undefined || value === null || value === "") return "";
   return String(value);
@@ -121,7 +128,7 @@ export function searchRecords(records: LocalRecord[], query: string): LocalRecor
   return records.filter((record) => {
     const haystack = [
       record.type,
-      sheetTypeLabel(record.type),
+      recordSourceLabel(record),
       ...Object.values(record.data).map(String),
     ]
       .join(" ")

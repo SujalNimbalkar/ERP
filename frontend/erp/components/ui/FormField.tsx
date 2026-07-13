@@ -6,6 +6,10 @@ interface FormFieldProps {
   field: FieldConfig;
   value: string;
   onChange: (name: string, value: string) => void;
+  /** Override the DOM id — needed when the same field name repeats across
+   * multiple rows (e.g. one per invoice/material line), so ids stay unique
+   * and each <label> focuses the right instance. Defaults to `field-{name}`. */
+  id?: string;
 }
 
 const inputClass =
@@ -17,8 +21,8 @@ function normalizedOptions(field: FieldConfig): { value: string; label: string }
   );
 }
 
-export function FormField({ field, value, onChange }: FormFieldProps) {
-  const id = `field-${field.name}`;
+export function FormField({ field, value, onChange, id: idOverride }: FormFieldProps) {
+  const id = idOverride ?? `field-${field.name}`;
   const safeValue = value ?? "";
 
   return (

@@ -9,6 +9,7 @@ import {
   downloadCsv,
   filterRecordsForView,
   getCellValue,
+  recordSourceLabel,
   recordsToCsv,
   searchRecords,
 } from "@/lib/recordColumns";
@@ -184,7 +185,7 @@ export function RecordsView() {
     const date = new Date(record.savedAt).toLocaleDateString("en-IN", {
       day: "2-digit", month: "short", year: "numeric",
     });
-    if (!confirm(`Delete this ${record.type} record (saved ${date})? This cannot be undone.`)) return;
+    if (!confirm(`Delete this ${recordSourceLabel(record)} record (saved ${date})? This cannot be undone.`)) return;
     appendAuditEntry({
       action: "delete",
       recordId: record.id,
@@ -407,7 +408,7 @@ export function RecordsView() {
             <div className="mb-4 border border-black p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-black">
-                  Editing — {editing.record.type} · saved{" "}
+                  Editing — {recordSourceLabel(editing.record)} · saved{" "}
                   {new Date(editing.record.savedAt).toLocaleDateString("en-IN", {
                     day: "2-digit", month: "short", year: "numeric",
                   })}

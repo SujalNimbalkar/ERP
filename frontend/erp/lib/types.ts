@@ -64,8 +64,7 @@ export type MasterType =
   | "vehicle-master"
   | "vehicle-maintenance"
   | "materials"
-  | "parties"
-  | "cargo-sources"
+  | "locations"
   | "staff"
   | "bills"
   | "audit";

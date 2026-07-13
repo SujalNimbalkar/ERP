@@ -8,12 +8,13 @@ function auditFormSubmission(type: string, rows: Record<string, string | number>
   const docNos = Array.from(
     new Set(rows.map((r) => String(r.documentNo ?? r.dcNo ?? "")).filter(Boolean))
   );
+  const plantType = rows[0].plantType ? ` (${rows[0].plantType})` : "";
   appendAuditEntry({
     action: "create",
     recordType: type,
     recordId: String(rows[0].id ?? ""),
     documentNo: docNos.join(", "),
-    summary: `${rows.length} row(s) saved to ${type}`,
+    summary: `${rows.length} row(s) saved to ${type}${plantType}`,
     before: {},
     after: rows[0],
   });

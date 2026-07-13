@@ -15,10 +15,15 @@ import { COMPANIES, companyName } from "@/lib/companies";
 import { getAllCargoSources, type CargoSourceType } from "@/lib/sheetConfig";
 import { downloadCsv } from "@/lib/recordColumns";
 
-function monthOffset(offset: number): string {
+/** Local YYYY-MM-DD (no UTC shift from toISOString). */
+function formatDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function dateOffset(monthsFromNow: number): string {
   const d = new Date();
-  d.setMonth(d.getMonth() + offset);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  d.setMonth(d.getMonth() + monthsFromNow);
+  return formatDate(d);
 }
 
 const selectClass =
@@ -60,8 +65,8 @@ function exportRows(filename: string, header: string[], rows: (string | number)[
 }
 
 export function DashboardView() {
-  const [fromMonth, setFromMonth] = useState(() => monthOffset(-5));
-  const [toMonth, setToMonth] = useState(() => monthOffset(0));
+  const [fromDate, setFromDate] = useState(() => dateOffset(-5));
+  const [toDate, setToDate] = useState(() => dateOffset(0));
   const [companyId, setCompanyId] = useState("");
   const [plantType, setPlantType] = useState<CargoSourceType | "">("");
   const [vehicleNo, setVehicleNo] = useState("");
@@ -72,12 +77,12 @@ export function DashboardView() {
     const bump = () => setVersion((v) => v + 1);
     window.addEventListener("sahyadri-local-update", bump);
     window.addEventListener("sahyadri-vehicle-update", bump);
-    window.addEventListener("sahyadri-cargo-source-update", bump);
+    window.addEventListener("sahyadri-location-update", bump);
     window.addEventListener("sahyadri-staff-update", bump);
     return () => {
       window.removeEventListener("sahyadri-local-update", bump);
       window.removeEventListener("sahyadri-vehicle-update", bump);
-      window.removeEventListener("sahyadri-cargo-source-update", bump);
+      window.removeEventListener("sahyadri-location-update", bump);
       window.removeEventListener("sahyadri-staff-update", bump);
     };
   }, []);
@@ -85,8 +90,8 @@ export function DashboardView() {
   const cargoSources = useMemo(() => getAllCargoSources(), [version]);
 
   const filters: DashboardFilters = useMemo(
-    () => ({ fromMonth, toMonth, companyId, vehicleNo, driverId, plantType }),
-    [fromMonth, toMonth, companyId, vehicleNo, driverId, plantType]
+    () => ({ fromDate, toDate, companyId, vehicleNo, driverId, plantType }),
+    [fromDate, toDate, companyId, vehicleNo, driverId, plantType]
   );
 
   // version bump re-reads localStorage when any record changes
@@ -98,7 +103,7 @@ export function DashboardView() {
   const months = useMemo(() => monthlyPL(filters), [filters, version]);
   const allTrips = useMemo(
     () => collectTrips({ ...filters, vehicleNo: "", driverId: "" }),
-    [fromMonth, toMonth, companyId, plantType, version]
+    [fromDate, toDate, companyId, plantType, version]
   );
   /* eslint-enable react-hooks/exhaustive-deps */
 
@@ -143,22 +148,22 @@ export function DashboardView() {
 
       <div className="mb-4 grid grid-cols-2 gap-2 border border-black p-3 sm:grid-cols-3 lg:grid-cols-6">
         <label className="flex flex-col gap-0.5 text-xs font-medium text-black">
-          From Month
+          From Date
           <input
-            type="month"
-            value={fromMonth}
-            max={toMonth}
-            onChange={(e) => setFromMonth(e.target.value)}
+            type="date"
+            value={fromDate}
+            max={toDate}
+            onChange={(e) => setFromDate(e.target.value)}
             className={selectClass}
           />
         </label>
         <label className="flex flex-col gap-0.5 text-xs font-medium text-black">
-          To Month
+          To Date
           <input
-            type="month"
-            value={toMonth}
-            min={fromMonth}
-            onChange={(e) => setToMonth(e.target.value)}
+            type="date"
+            value={toDate}
+            min={fromDate}
+            onChange={(e) => setToDate(e.target.value)}
             className={selectClass}
           />
         </label>
@@ -236,7 +241,7 @@ export function DashboardView() {
             type="button"
             onClick={() =>
               exportRows(
-                `dashboard-vehicles-${fromMonth}-${toMonth}.csv`,
+                `dashboard-vehicles-${fromDate}-${toDate}.csv`,
                 ["Vehicle", "Trips", "Weight (kg)", "Earnings", "Diesel", "Maintenance", "Toll", "Profit"],
                 vehicles.map((v) => [v.vehicleNo, v.trips, v.totalWt, v.earnings, v.dieselCost, v.maintenanceCost, v.toll, v.profit])
               )
@@ -296,7 +301,7 @@ export function DashboardView() {
             type="button"
             onClick={() =>
               exportRows(
-                `dashboard-drivers-${fromMonth}-${toMonth}.csv`,
+                `dashboard-drivers-${fromDate}-${toDate}.csv`,
                 ["Driver ID", "Driver", "Trips", "Weight (kg)", "Earnings Hauled", "Salary Paid", "Daily Expenses", "Total Cost"],
                 drivers.map((d) => [d.driverId, d.driverName, d.trips, d.totalWt, d.earningsHauled, d.salaryPaid, d.dailyExpenses, d.totalCost])
               )
@@ -361,7 +366,7 @@ export function DashboardView() {
             type="button"
             onClick={() =>
               exportRows(
-                `dashboard-staff-payroll-${fromMonth}-${toMonth}.csv`,
+                `dashboard-staff-payroll-${fromDate}-${toDate}.csv`,
                 ["Staff ID", "Name", "Role", "Salary Paid", "Daily Expenses", "Total Cost"],
                 staffPayroll.map((s) => [s.staffId, s.name, s.role, s.salaryPaid, s.dailyExpenses, s.totalCost])
               )
@@ -422,7 +427,7 @@ export function DashboardView() {
             type="button"
             onClick={() =>
               exportRows(
-                `dashboard-monthly-pl-${fromMonth}-${toMonth}.csv`,
+                `dashboard-monthly-pl-${fromDate}-${toDate}.csv`,
                 ["Month", "Revenue", "Diesel", "Toll", "Maintenance", "Salary", "Driver Expenses", "Profit"],
                 months.map((m) => [m.month, m.revenue, m.diesel, m.toll, m.maintenance, m.salary, m.driverExpenses, m.profit])
               )

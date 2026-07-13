@@ -2,21 +2,20 @@
 
 import { useEffect, useState } from "react";
 import {
-  STAFF_ROLES,
-  deleteStaff,
-  getAllStaff,
-  getNextStaffId,
-  saveStaff,
-  updateStaff,
-  type StaffRecord,
-} from "@/lib/staffStore";
+  deleteLocation,
+  getAllLocations,
+  saveLocation,
+  updateLocation,
+  type LocationEntry,
+} from "@/lib/locationStore";
+import { BUILT_IN_CARGO_SOURCES } from "@/lib/sheetConfig";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Toast } from "@/components/ui/Toast";
 import { useConfirmSave } from "@/components/ui/useConfirmSave";
 
 const TABS = [
   { id: "browse", label: "Browse" },
-  { id: "add", label: "Add Staff" },
+  { id: "add", label: "Add" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -24,57 +23,80 @@ type TabId = (typeof TABS)[number]["id"];
 const inputClass =
   "w-full border border-black bg-white px-3 py-2 text-sm text-black outline-none focus:border-black";
 
+interface DisplayRow {
+  key: string;
+  name: string;
+  isBuiltIn: boolean;
+  isCargoPlant: boolean;
+  notes: string;
+  location?: LocationEntry;
+}
+
 interface EditState {
   id: string;
   name: string;
-  role: string;
-  mobileNumber: string;
-  rate: string;
+  isCargoPlant: boolean;
   notes: string;
 }
 
-function blankNew(): Omit<StaffRecord, "id" | "addedAt" | "updatedAt"> {
-  return { name: "", role: STAFF_ROLES[0], mobileNumber: "", rate: "", notes: "" };
+function blankForm() {
+  return { name: "", isCargoPlant: false, notes: "" };
 }
 
-export function StaffMasterModule() {
+export function PlantsVendorsModule() {
   const [activeTab, setActiveTab] = useState<TabId>("browse");
-  const [staff, setStaff] = useState<StaffRecord[]>([]);
+  const [locations, setLocations] = useState<LocationEntry[]>([]);
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<EditState | null>(null);
   const [editError, setEditError] = useState("");
 
-  const [form, setForm] = useState(blankNew());
+  const [form, setForm] = useState(blankForm());
   const [saveStatus, setSaveStatus] = useState<"idle" | "error">("idle");
   const [saveMsg, setSaveMsg] = useState("");
   const { confirmOpen, requestConfirm, confirmSave, cancel, toast, notify, dismissToast } =
     useConfirmSave();
 
   function refresh() {
-    setStaff(getAllStaff());
+    setLocations(getAllLocations());
   }
 
   useEffect(() => {
     refresh();
     const onUpdate = () => refresh();
-    window.addEventListener("sahyadri-staff-update", onUpdate);
-    return () => window.removeEventListener("sahyadri-staff-update", onUpdate);
+    window.addEventListener("sahyadri-location-update", onUpdate);
+    return () => window.removeEventListener("sahyadri-location-update", onUpdate);
   }, []);
 
-  const filtered = staff.filter((s) => {
+  const rows: DisplayRow[] = [
+    ...BUILT_IN_CARGO_SOURCES.map((s) => ({
+      key: s.type,
+      name: s.label,
+      isBuiltIn: true,
+      isCargoPlant: true,
+      notes: "",
+    })),
+    ...locations.map((l) => ({
+      key: l.id,
+      name: l.name,
+      isBuiltIn: false,
+      isCargoPlant: l.isCargoPlant,
+      notes: l.notes,
+      location: l,
+    })),
+  ];
+
+  const filtered = rows.filter((r) => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
-    return s.name.toLowerCase().includes(q) || s.role.toLowerCase().includes(q);
+    return r.name.toLowerCase().includes(q);
   });
 
-  function startEdit(s: StaffRecord) {
+  function startEdit(location: LocationEntry) {
     setEditing({
-      id: s.id,
-      name: s.name,
-      role: s.role,
-      mobileNumber: s.mobileNumber,
-      rate: s.rate,
-      notes: s.notes,
+      id: location.id,
+      name: location.name,
+      isCargoPlant: location.isCargoPlant,
+      notes: location.notes,
     });
     setEditError("");
   }
@@ -95,40 +117,37 @@ export function StaffMasterModule() {
   }
 
   function performSaveEdit(current: EditState, trimName: string) {
-    updateStaff(current.id, {
+    updateLocation(current.id, {
       name: trimName,
-      role: current.role,
-      mobileNumber: current.mobileNumber.trim(),
-      rate: current.rate.trim(),
+      isCargoPlant: current.isCargoPlant,
       notes: current.notes.trim(),
     });
     setEditing(null);
     setEditError("");
     refresh();
-    notify(`Staff "${trimName}" updated.`);
+    notify(`"${trimName}" updated.`);
   }
 
   function handleDelete(id: string, name: string) {
-    if (!confirm(`Remove staff "${name}"?`)) return;
-    deleteStaff(id);
+    if (!confirm(`Remove "${name}"?`)) return;
+    deleteLocation(id);
     refresh();
   }
 
   function performAdd(trimName: string) {
-    const record: StaffRecord = {
-      id: getNextStaffId(),
+    saveLocation({
+      id: `loc-${Date.now()}`,
       name: trimName,
-      role: form.role,
-      mobileNumber: form.mobileNumber.trim(),
-      rate: form.rate.trim(),
+      isCargoPlant: form.isCargoPlant,
       notes: form.notes.trim(),
-      addedAt: new Date().toISOString(),
-      updatedAt: "",
-    };
-    saveStaff(record);
-    setForm(blankNew());
+    });
+    setForm(blankForm());
     refresh();
-    notify(`Staff "${trimName}" (${record.id}) added.`);
+    notify(
+      form.isCargoPlant
+        ? `"${trimName}" added — it now appears as a Cargo Transport source.`
+        : `"${trimName}" added as a delivery vendor.`
+    );
   }
 
   function handleAdd(e: React.SyntheticEvent<HTMLFormElement>) {
@@ -139,6 +158,11 @@ export function StaffMasterModule() {
       setSaveMsg("Name is required.");
       return;
     }
+    if (rows.some((r) => r.name.toLowerCase() === trimName.toLowerCase())) {
+      setSaveStatus("error");
+      setSaveMsg(`"${trimName}" already exists.`);
+      return;
+    }
     setSaveStatus("idle");
     setSaveMsg("");
     requestConfirm(() => performAdd(trimName));
@@ -147,10 +171,11 @@ export function StaffMasterModule() {
   return (
     <div className="max-w-4xl">
       <div className="mb-6">
-        <h2 className="text-xl font-semibold text-black">Staff Master</h2>
+        <h2 className="text-xl font-semibold text-black">Plants & Vendors</h2>
         <p className="mt-1 text-sm text-black">
-          Accountants, hamals and other non-driver staff. {staff.length} on file. Used by
-          Payroll's Salary and Daily Expenses forms.
+          One list of places. Check &ldquo;Cargo Plant&rdquo; on any entry to give it its
+          own origin tab-bar button in Cargo Transport — leave it unchecked for a
+          destination-only vendor. Flip it later without re-entering the place.
         </p>
         <div className="mt-4 flex flex-wrap border border-black">
           {TABS.map((tab) => (
@@ -178,7 +203,7 @@ export function StaffMasterModule() {
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name or role…"
+            placeholder="Search by name…"
             className="mb-4 w-full border border-black bg-white px-3 py-2 text-sm text-black outline-none"
           />
 
@@ -186,20 +211,11 @@ export function StaffMasterModule() {
             <table className="w-full border-collapse text-left text-sm text-black">
               <thead>
                 <tr className="border-b border-black bg-white">
-                  <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 text-xs font-semibold">
-                    ID
-                  </th>
                   <th className="border-r border-black/30 px-3 py-2 text-xs font-semibold">
                     Name
                   </th>
                   <th className="border-r border-black/30 px-3 py-2 text-xs font-semibold">
-                    Role
-                  </th>
-                  <th className="border-r border-black/30 px-3 py-2 text-xs font-semibold">
-                    Mobile
-                  </th>
-                  <th className="border-r border-black/30 px-3 py-2 text-xs font-semibold">
-                    Rate (Rs)
+                    Type
                   </th>
                   <th className="border-r border-black/30 px-3 py-2 text-xs font-semibold">
                     Notes
@@ -210,21 +226,16 @@ export function StaffMasterModule() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-3 py-6 text-sm text-black">
-                      {staff.length === 0
-                        ? "No staff added yet."
-                        : `No staff match “${search}”.`}
+                    <td colSpan={4} className="px-3 py-6 text-sm text-black">
+                      {rows.length === 0 ? "Nothing added yet." : `No matches for “${search}”.`}
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((s) => {
-                    const isEditingThis = editing?.id === s.id;
+                  filtered.map((row) => {
+                    const isEditingThis = row.location && editing?.id === row.location.id;
                     if (isEditingThis && editing) {
                       return (
-                        <tr key={s.id} className="border-b border-black bg-black/5">
-                          <td className="border-r border-black/20 px-2 py-1.5 font-mono text-xs">
-                            {s.id}
-                          </td>
+                        <tr key={row.key} className="border-b border-black bg-black/5">
                           <td className="border-r border-black/20 px-2 py-1.5">
                             <input
                               type="text"
@@ -234,36 +245,16 @@ export function StaffMasterModule() {
                             />
                           </td>
                           <td className="border-r border-black/20 px-2 py-1.5">
-                            <select
-                              value={editing.role}
-                              onChange={(e) => setEditing({ ...editing, role: e.target.value })}
-                              className="w-full border border-black bg-white px-2 py-1 text-xs text-black outline-none"
-                            >
-                              {STAFF_ROLES.map((r) => (
-                                <option key={r} value={r}>
-                                  {r}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="border-r border-black/20 px-2 py-1.5">
-                            <input
-                              type="text"
-                              value={editing.mobileNumber}
-                              onChange={(e) =>
-                                setEditing({ ...editing, mobileNumber: e.target.value })
-                              }
-                              className="w-full border border-black bg-white px-2 py-1 text-xs text-black outline-none"
-                            />
-                          </td>
-                          <td className="border-r border-black/20 px-2 py-1.5">
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={editing.rate}
-                              onChange={(e) => setEditing({ ...editing, rate: e.target.value })}
-                              className="w-full border border-black bg-white px-2 py-1 text-xs text-black outline-none"
-                            />
+                            <label className="flex items-center gap-1.5 text-xs">
+                              <input
+                                type="checkbox"
+                                checked={editing.isCargoPlant}
+                                onChange={(e) =>
+                                  setEditing({ ...editing, isCargoPlant: e.target.checked })
+                                }
+                              />
+                              Cargo Plant
+                            </label>
                           </td>
                           <td className="border-r border-black/20 px-2 py-1.5">
                             <input
@@ -297,38 +288,41 @@ export function StaffMasterModule() {
                     }
 
                     return (
-                      <tr key={s.id} className="border-b border-black/20 hover:bg-black/5">
-                        <td className="whitespace-nowrap border-r border-black/20 px-3 py-2 text-xs font-mono">
-                          {s.id}
-                        </td>
-                        <td className="border-r border-black/20 px-3 py-2 text-xs">{s.name}</td>
-                        <td className="border-r border-black/20 px-3 py-2 text-xs">{s.role}</td>
+                      <tr key={row.key} className="border-b border-black/20 hover:bg-black/5">
+                        <td className="border-r border-black/20 px-3 py-2 text-xs">{row.name}</td>
                         <td className="border-r border-black/20 px-3 py-2 text-xs">
-                          {s.mobileNumber || "—"}
+                          {row.isBuiltIn ? (
+                            <span className="text-black/50">Built-in Plant</span>
+                          ) : row.isCargoPlant ? (
+                            <span className="font-medium">Cargo Plant</span>
+                          ) : (
+                            <span>Vendor</span>
+                          )}
                         </td>
                         <td className="border-r border-black/20 px-3 py-2 text-xs">
-                          {s.rate ? `Rs ${s.rate}` : "—"}
-                        </td>
-                        <td className="border-r border-black/20 px-3 py-2 text-xs">
-                          {s.notes || "—"}
+                          {row.notes || "—"}
                         </td>
                         <td className="px-3 py-2 text-xs">
-                          <div className="flex gap-3">
-                            <button
-                              type="button"
-                              onClick={() => startEdit(s)}
-                              className="text-black underline"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(s.id, s.name)}
-                              className="text-black underline"
-                            >
-                              Delete
-                            </button>
-                          </div>
+                          {row.location && (
+                            <div className="flex gap-3">
+                              <button
+                                type="button"
+                                onClick={() => startEdit(row.location as LocationEntry)}
+                                className="text-black underline"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleDelete((row.location as LocationEntry).id, row.name)
+                                }
+                                className="text-black underline"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     );
@@ -339,7 +333,7 @@ export function StaffMasterModule() {
           </div>
 
           <p className="mt-2 text-xs text-black">
-            Showing {filtered.length} of {staff.length} staff
+            Showing {filtered.length} of {rows.length}
           </p>
         </div>
       )}
@@ -347,14 +341,14 @@ export function StaffMasterModule() {
       {activeTab === "add" && (
         <form onSubmit={handleAdd} className="max-w-lg space-y-4">
           <div className="border border-black p-4 space-y-4">
-            <h3 className="text-sm font-semibold text-black">New Staff</h3>
+            <h3 className="text-sm font-semibold text-black">New Place</h3>
 
             <div className="flex flex-col gap-1">
-              <label htmlFor="staff-name" className="text-sm font-medium text-black">
+              <label htmlFor="loc-name" className="text-sm font-medium text-black">
                 Name <span>*</span>
               </label>
               <input
-                id="staff-name"
+                id="loc-name"
                 type="text"
                 value={form.name}
                 required
@@ -362,72 +356,37 @@ export function StaffMasterModule() {
                   setForm({ ...form, name: e.target.value });
                   setSaveStatus("idle");
                 }}
-                placeholder="e.g. Ramesh Kulkarni"
+                placeholder="e.g. New Foundry - Satara, ABC Traders"
                 className={inputClass}
               />
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label htmlFor="staff-role" className="text-sm font-medium text-black">
-                Role
-              </label>
-              <select
-                id="staff-role"
-                value={form.role}
-                onChange={(e) => setForm({ ...form, role: e.target.value })}
-                className={inputClass}
-              >
-                {STAFF_ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <label htmlFor="staff-mobile" className="text-sm font-medium text-black">
-                Mobile Number
-              </label>
+            <label className="flex items-center gap-2 text-sm text-black">
               <input
-                id="staff-mobile"
-                type="text"
-                value={form.mobileNumber}
-                onChange={(e) => setForm({ ...form, mobileNumber: e.target.value })}
-                placeholder="10-digit mobile number"
-                className={inputClass}
+                type="checkbox"
+                checked={form.isCargoPlant}
+                onChange={(e) => setForm({ ...form, isCargoPlant: e.target.checked })}
               />
-            </div>
+              Also use as a Cargo Plant (origin)
+            </label>
+            <p className="-mt-2 text-xs text-black/60">
+              Checked: shows as a tab-bar button in Cargo Transport, and as a
+              &ldquo;To&rdquo; option on every other plant — no Google Sheet setup
+              needed. Unchecked: destination-only, still available as a &ldquo;To&rdquo;
+              option everywhere.
+            </p>
 
             <div className="flex flex-col gap-1">
-              <label htmlFor="staff-rate" className="text-sm font-medium text-black">
-                Salary (Rs)
-              </label>
-              <input
-                id="staff-rate"
-                type="number"
-                // step="0.01"
-                value={form.rate}
-                onChange={(e) => setForm({ ...form, rate: e.target.value })}
-                placeholder="e.g. 25000"
-                className={inputClass}
-              />
-              <p className="text-xs text-black/60">
-                Monthly salary for Accountant, daily wage for Hamal — auto-fills the amount
-                in Payroll &gt; Salary.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <label htmlFor="staff-notes" className="text-sm font-medium text-black">
+              <label htmlFor="loc-notes" className="text-sm font-medium text-black">
                 Notes (optional)
               </label>
               <textarea
-                id="staff-notes"
+                id="loc-notes"
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                placeholder="e.g. address, contact person"
                 className={inputClass}
-                rows={2}
+                rows={3}
               />
             </div>
           </div>
@@ -440,14 +399,14 @@ export function StaffMasterModule() {
             type="submit"
             className="border border-black bg-white px-5 py-2.5 text-sm font-medium text-black"
           >
-            Add Staff
+            Add
           </button>
         </form>
       )}
 
       <ConfirmDialog
         open={confirmOpen}
-        message={editing ? "Update this staff member?" : "Add this staff member?"}
+        message={editing ? "Update this place?" : "Add this place?"}
         onConfirm={confirmSave}
         onCancel={cancel}
       />

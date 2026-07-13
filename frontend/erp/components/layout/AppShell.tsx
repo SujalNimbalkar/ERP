@@ -13,13 +13,14 @@ import {
 } from "@/components/forms/ModuleForms";
 import { DieselTankForm } from "@/components/forms/DieselTankForm";
 import { MaterialMasterModule } from "@/components/forms/MaterialMasterModule";
-import { PartyMasterModule } from "@/components/forms/PartyMasterModule";
+import { PlantsVendorsModule } from "@/components/forms/PlantsVendorsModule";
 import { VehicleModule } from "@/components/forms/VehicleModule";
 import { BillingModule } from "@/components/billing/BillingModule";
 import { DashboardView } from "@/components/dashboard/DashboardView";
 import { RecordsView } from "@/components/views/RecordsView";
 import { LocalDataPanel } from "@/components/layout/LocalDataPanel";
 import { hasCloudSync } from "@/lib/storageMode";
+import { migrateLegacyCargoRecords } from "@/lib/localStore";
 
 const FORM_MAP: Record<string, React.ReactNode> = {
   cargo: <CargoTransportForm />,
@@ -32,7 +33,7 @@ const FORM_MAP: Record<string, React.ReactNode> = {
   payroll: <PayrollModule />,
   ledger: <CustomerLedgerForm />,
   materials: <MaterialMasterModule />,
-  parties: <PartyMasterModule />,
+  parties: <PlantsVendorsModule />,
   vehicles: <VehicleModule />,
   records: <RecordsView />,
 };
@@ -44,6 +45,13 @@ export function AppShell() {
   );
   const [sheetMessage, setSheetMessage] = useState("");
   const [fetchAttempt, setFetchAttempt] = useState(0);
+
+  // Runs once, unconditionally (even without cloud sync configured) — any
+  // localStorage rows still under the old per-plant Cargo types get rewritten
+  // to the unified "cargo" type + plantType field before anything reads them.
+  useEffect(() => {
+    migrateLegacyCargoRecords();
+  }, []);
 
   // Google Sheets is the only data source — the app blocks until the fetch
   // finishes so nothing stale from a previous session is ever shown.

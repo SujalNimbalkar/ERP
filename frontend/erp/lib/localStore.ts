@@ -3,16 +3,13 @@ import type { LocalRecord, SheetType, SubmitPayload } from "./types";
 const STORAGE_KEY = "sahyadri_erp_records";
 
 /**
- * Sequential per-sheet id prefixes (e.g. H19-000123). `drivers` is
+ * Sequential per-sheet id prefixes (e.g. INF-000123). `drivers` is
  * intentionally absent — it already has a stable business id (driverId).
+ * Cargo rows share one SheetType (`"cargo"`) across every plant, so their
+ * prefix is resolved per-row from `data.plantType` instead — see
+ * `cargoPrefixFor()`.
  */
 const ID_PREFIXES: Partial<Record<SheetType, string>> = {
-  "cargo-h19": "H19",
-  "cargo-j14": "J14",
-  "cargo-j15-j16": "J1516",
-  "cargo-matoshri": "MTS",
-  "cargo-minerva": "MIN",
-  "cargo-machine-shop": "MCS",
   infra: "INF",
   pallets: "PAL",
   diesel: "DSL",
@@ -20,6 +17,34 @@ const ID_PREFIXES: Partial<Record<SheetType, string>> = {
   "driver-expense": "DEX",
   ledger: "LED",
 };
+
+/** Legacy built-in plants keep their existing 3-4 letter prefixes for continuity. */
+const CARGO_ID_PREFIXES: Record<string, string> = {
+  "cargo-h19": "H19",
+  "cargo-j14": "J14",
+  "cargo-j15-j16": "J1516",
+  "cargo-matoshri": "MTS",
+  "cargo-minerva": "MIN",
+  "cargo-machine-shop": "MCS",
+};
+
+/** Any other (custom) plant derives its own prefix from its slug, so distinct
+ * custom plants don't share one interleaved id sequence. */
+function cargoPrefixFor(plantType: string): string {
+  const known = CARGO_ID_PREFIXES[plantType];
+  if (known) return known;
+  const slug = plantType
+    .replace(/^cargo-/, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 8);
+  return slug || "PLANT";
+}
+
+function prefixFor(type: SheetType, row: Record<string, string | number>): string | undefined {
+  if (type === "cargo") return cargoPrefixFor(String(row.plantType ?? ""));
+  return ID_PREFIXES[type];
+}
 
 function pad(n: number): string {
   return String(n).padStart(6, "0");
@@ -38,7 +63,7 @@ function getMaxSequence(type: SheetType, prefix: string): number {
 }
 
 function stampId(type: SheetType, row: Record<string, string | number>): Record<string, string | number> {
-  const prefix = ID_PREFIXES[type];
+  const prefix = prefixFor(type, row);
   if (!prefix) return row;
   return { ...row, id: `${prefix}-${pad(getMaxSequence(type, prefix) + 1)}` };
 }
@@ -77,14 +102,24 @@ export function saveLocalRecord(payload: SubmitPayload): LocalRecord {
 export function saveLocalRecords(payload: SubmitPayload): LocalRecord[] {
   const rows = payload.records ?? (payload.data ? [payload.data] : []);
   const savedAt = new Date().toISOString();
-  const prefix = ID_PREFIXES[payload.type];
-  const base = prefix ? getMaxSequence(payload.type, prefix) : 0;
-  const batch: LocalRecord[] = rows.map((row, index) => ({
-    id: crypto.randomUUID(),
-    type: payload.type,
-    data: prefix ? { ...row, id: `${prefix}-${pad(base + index + 1)}` } : row,
-    savedAt,
-  }));
+  // A single submission can mix plants (e.g. a trip with H19 and J14
+  // invoices), so each row's prefix/sequence is resolved independently
+  // rather than assuming one prefix for the whole batch.
+  const sequenceByPrefix = new Map<string, number>();
+  const batch: LocalRecord[] = rows.map((row) => {
+    const prefix = prefixFor(payload.type, row);
+    if (!prefix) {
+      return { id: crypto.randomUUID(), type: payload.type, data: row, savedAt };
+    }
+    const next = (sequenceByPrefix.get(prefix) ?? getMaxSequence(payload.type, prefix)) + 1;
+    sequenceByPrefix.set(prefix, next);
+    return {
+      id: crypto.randomUUID(),
+      type: payload.type,
+      data: { ...row, id: `${prefix}-${pad(next)}` },
+      savedAt,
+    };
+  });
   const records = readAll();
   records.unshift(...batch);
   writeAll(records);
@@ -208,6 +243,30 @@ export function deleteLocalRecord(id: string): boolean {
     window.dispatchEvent(new Event("sahyadri-local-update"));
   }
   return true;
+}
+
+const CARGO_MIGRATION_FLAG = "sahyadri_cargo_plantType_migration_v1";
+
+/**
+ * One-time migration from the old per-plant Cargo SheetTypes (`"cargo-h19"`,
+ * any custom `"cargo-*"` plant, etc.) to the unified `"cargo"` SheetType with
+ * a `data.plantType` field carrying the old type. Idempotent — guarded by its
+ * own flag — safe to call on every app start, including offline-only setups.
+ */
+export function migrateLegacyCargoRecords(): void {
+  if (typeof window === "undefined") return;
+  if (localStorage.getItem(CARGO_MIGRATION_FLAG)) return;
+
+  const records = readAll();
+  let changed = false;
+  const migrated = records.map((r) => {
+    if (r.type === "cargo" || !r.type.startsWith("cargo-")) return r;
+    changed = true;
+    return { ...r, type: "cargo" as SheetType, data: { ...r.data, plantType: r.type } };
+  });
+
+  if (changed) writeAll(migrated);
+  localStorage.setItem(CARGO_MIGRATION_FLAG, new Date().toISOString());
 }
 
 export function exportLocalRecordsJson(): string {
