@@ -9,11 +9,7 @@ import {
   injectOptions,
   parseFormData,
 } from "@/lib/sheetConfig";
-import {
-  buildDieselFillRef,
-  loadLastDieselFill,
-  saveLastDieselFill,
-} from "@/lib/dieselUtils";
+import { applyDieselCalc, buildDieselFillRef, type LastDieselFill } from "@/lib/dieselUtils";
 import { getDriverOptions } from "@/lib/driverStore";
 import { getVehicleNoOptions } from "@/lib/vehicleStore";
 import { FormField } from "@/components/ui/FormField";
@@ -34,40 +30,11 @@ function initialValues(): Record<string, string> {
   });
 }
 
-/**
- * Auto-calculator between amount and liters at the entered rate:
- * editing the amount (or the rate) derives liters; editing liters derives
- * the amount.
- */
-function applyDieselCalc(
-  values: Record<string, string>,
-  changedField: string
-): Record<string, string> {
-  const rate = Number(values.ratePerLiter);
-  if (!(rate > 0)) return values;
-  const amount = Number(values.fillAmount);
-  const liters = Number(values.liters);
-
-  if (changedField === "fillAmount" || changedField === "ratePerLiter") {
-    if (amount > 0) {
-      return { ...values, liters: String(Math.round((amount / rate) * 100) / 100) };
-    }
-    if (changedField === "fillAmount") return { ...values, liters: "" };
-    if (liters > 0) {
-      return { ...values, fillAmount: String(Math.round(liters * rate * 100) / 100) };
-    }
-  }
-  if (changedField === "liters") {
-    return {
-      ...values,
-      fillAmount: liters > 0 ? String(Math.round(liters * rate * 100) / 100) : "",
-    };
-  }
-  return values;
-}
-
 export function DieselTankForm() {
-  const lastFill = loadLastDieselFill();
+  // Reminder banner for whatever was just saved this session — not persisted
+  // anywhere, so it's simply empty again after a page reload (the Sheet
+  // itself, not localStorage, is the source of truth for actual fill history).
+  const [lastFill, setLastFill] = useState<LastDieselFill | null>(null);
   const [values, setValues] = useState(() => initialValues());
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
@@ -126,7 +93,7 @@ export function DieselTankForm() {
       });
 
       if (result.success) {
-        saveLastDieselFill({
+        setLastFill({
           fillRef: withRef.fillRef,
           vehicleNo: withRef.vehicleNo,
           fillAmount: withRef.fillAmount,

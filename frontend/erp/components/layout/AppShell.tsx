@@ -2,15 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { MODULES } from "@/lib/sheetConfig";
-import { refreshFromSheets } from "@/lib/sheetFetch";
+import { getLastSheetFetch, refreshFromSheets } from "@/lib/sheetFetch";
 import { CargoTransportForm } from "@/components/forms/CargoTransportForm";
 import { DriverMasterForm } from "@/components/forms/DriverMasterForm";
 import { StaffMasterModule } from "@/components/forms/StaffMasterModule";
 import { PayrollModule } from "@/components/forms/PayrollModule";
-import {
-  InfraCrusherForm,
-  CustomerLedgerForm,
-} from "@/components/forms/ModuleForms";
+import { CustomerLedgerForm } from "@/components/forms/ModuleForms";
+import { InfraCrusherForm } from "@/components/forms/InfraCrusherForm";
 import { DieselTankForm } from "@/components/forms/DieselTankForm";
 import { MaterialMasterModule } from "@/components/forms/MaterialMasterModule";
 import { PlantsVendorsModule } from "@/components/forms/PlantsVendorsModule";
@@ -19,8 +17,14 @@ import { BillingModule } from "@/components/billing/BillingModule";
 import { DashboardView } from "@/components/dashboard/DashboardView";
 import { RecordsView } from "@/components/views/RecordsView";
 import { LocalDataPanel } from "@/components/layout/LocalDataPanel";
-import { hasCloudSync } from "@/lib/storageMode";
+import { hasCloudSync, setCloudSyncFlag } from "@/lib/storageMode";
 import { migrateLegacyCargoRecords } from "@/lib/localStore";
+
+function formatFetchTime(iso: string | null): string {
+  if (!iso) return "an earlier session";
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? "an earlier session" : date.toLocaleString();
+}
 
 const FORM_MAP: Record<string, React.ReactNode> = {
   cargo: <CargoTransportForm />,
@@ -38,11 +42,22 @@ const FORM_MAP: Record<string, React.ReactNode> = {
   records: <RecordsView />,
 };
 
-export function AppShell() {
+export function AppShell({ cloudSync }: { cloudSync: boolean }) {
+  // Seeded synchronously (not in an effect) so the very first render — and
+  // the useState initializer below — already sees the right value.
+  setCloudSyncFlag(cloudSync);
   const [activeModule, setActiveModule] = useState(MODULES[0].id);
-  const [sheetLoad, setSheetLoad] = useState<"idle" | "loading" | "done" | "error">(
-    hasCloudSync() ? "loading" : "idle"
-  );
+  // "refreshing"/"stale-error" cover a reload where a prior successful sync
+  // already left data in localStorage: the app renders immediately from
+  // that cache with a slim status strip instead of blocking, since a full
+  // reload-blocking gate on every visit is unnecessary once data exists.
+  // "loading"/"error" are the true-first-run blocking states.
+  const [sheetLoad, setSheetLoad] = useState<
+    "idle" | "loading" | "refreshing" | "done" | "stale-error" | "error"
+  >(() => {
+    if (!hasCloudSync()) return "idle";
+    return getLastSheetFetch() ? "refreshing" : "loading";
+  });
   const [sheetMessage, setSheetMessage] = useState("");
   const [fetchAttempt, setFetchAttempt] = useState(0);
 
@@ -53,14 +68,18 @@ export function AppShell() {
     migrateLegacyCargoRecords();
   }, []);
 
-  // Google Sheets is the only data source — the app blocks until the fetch
-  // finishes so nothing stale from a previous session is ever shown.
   useEffect(() => {
     if (!hasCloudSync()) return;
     let cancelled = false;
     refreshFromSheets().then((result) => {
       if (cancelled) return;
-      setSheetLoad(result.success ? "done" : "error");
+      if (result.success) {
+        setSheetLoad("done");
+      } else {
+        // Reload-with-cache case: stay unblocked and let the user retry from
+        // a banner; true-first-run case: keep the blocking error card.
+        setSheetLoad(getLastSheetFetch() ? "stale-error" : "error");
+      }
       setSheetMessage(result.message);
     });
     return () => {
@@ -135,6 +154,27 @@ export function AppShell() {
               </button>
             </div>
           </div>
+        )}
+        {sheetLoad === "refreshing" && (
+          <p className="mb-4 border border-black px-4 py-2 text-sm text-black">
+            Syncing with Google Sheets…
+          </p>
+        )}
+        {sheetLoad === "stale-error" && (
+          <p className="mb-4 border border-black px-4 py-2 text-sm text-black">
+            Couldn&apos;t refresh from Google Sheets — showing the last synced
+            copy from {formatFetchTime(getLastSheetFetch())}.{" "}
+            <button
+              type="button"
+              onClick={() => {
+                setSheetLoad("refreshing");
+                setFetchAttempt((n) => n + 1);
+              }}
+              className="font-semibold underline"
+            >
+              Retry
+            </button>
+          </p>
         )}
         {sheetLoad === "done" && sheetMessage && (
           <p className="mb-4 border border-black px-4 py-2 text-sm text-black">

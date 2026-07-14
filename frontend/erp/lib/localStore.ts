@@ -5,6 +5,10 @@ const STORAGE_KEY = "sahyadri_erp_records";
 /**
  * Sequential per-sheet id prefixes (e.g. INF-000123). `drivers` is
  * intentionally absent — it already has a stable business id (driverId).
+ * `trip-expense` is also absent — its `id` is generated client-side (see
+ * `buildTripExpenseRef` in sheetConfig.ts) *before* the record is saved, so
+ * the same ref can be stamped onto the cargo/infra rows that reference it in
+ * the same submission; stamping it here too would silently overwrite that.
  * Cargo rows share one SheetType (`"cargo"`) across every plant, so their
  * prefix is resolved per-row from `data.plantType` instead — see
  * `cargoPrefixFor()`.

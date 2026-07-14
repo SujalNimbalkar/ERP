@@ -1,5 +1,7 @@
 import type { ApiResponse, LocalRecord, MasterSyncPayload, SubmitPayload } from "./types";
+import { appendRows, deleteRow, upsertRow } from "@/app/actions/sheets";
 import { appendAuditEntry } from "./auditLog";
+import { hasCloudSync } from "./storageMode";
 import { markRecordsSynced, saveLocalRecord, saveLocalRecords } from "./localStore";
 
 /** One audit entry per form submission (not per material line). */
@@ -20,10 +22,9 @@ function auditFormSubmission(type: string, rows: Record<string, string | number>
   });
 }
 
-const GAS_URL = process.env.NEXT_PUBLIC_GAS_WEB_APP_URL ?? "";
-
 /**
- * Save form data locally first (always), then sync to Google Sheets if URL is configured.
+ * Save form data locally first (always), then sync to Google Sheets via the
+ * appendRows server action when cloud sync is configured.
  */
 export async function submitToSheet(
   payload: SubmitPayload
@@ -56,7 +57,7 @@ export async function submitToSheet(
       ? `Saved ${rowCount} rows locally.`
       : `Saved locally (${localId}…).`;
 
-  if (!GAS_URL) {
+  if (!hasCloudSync()) {
     return {
       success: true,
       message: localMsg + " Connect Google Sheets for cloud backup.",
@@ -65,23 +66,9 @@ export async function submitToSheet(
   }
 
   try {
-    const response = await fetch(GAS_URL, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(outgoingPayload),
-    });
-
-    if (!response.ok) {
-      markRecordsSynced(savedIds, false);
-      return {
-        success: true,
-        message: localMsg + ` Sheet sync failed (${response.status}). You can retry from Saved Records.`,
-        storage: "local",
-      };
-    }
-
-    const result = (await response.json()) as ApiResponse;
-    markRecordsSynced(savedIds, !!result.success);
+    const rows = outgoingPayload.records ?? (outgoingPayload.data ? [outgoingPayload.data] : []);
+    const result = await appendRows(outgoingPayload.type, rows);
+    markRecordsSynced(savedIds, result.success);
     return {
       success: true,
       message: result.success
@@ -89,7 +76,7 @@ export async function submitToSheet(
           ? `Saved ${rowCount} rows to local + Sheets.`
           : "Saved to local + Google Sheets."
         : localMsg + ` Sheet sync: ${result.message} You can retry from Saved Records.`,
-      storage: "remote",
+      storage: result.success ? "remote" : "local",
     };
   } catch {
     markRecordsSynced(savedIds, false);
@@ -107,15 +94,9 @@ export async function submitToSheet(
  * matches an existing Sheet row by id, or inserts if none was ever created.
  */
 export async function retrySync(record: LocalRecord): Promise<boolean> {
-  if (typeof window === "undefined" || !GAS_URL) return false;
+  if (typeof window === "undefined" || !hasCloudSync()) return false;
   try {
-    const response = await fetch(GAS_URL, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ type: record.type, action: "upsert", data: record.data }),
-    });
-    if (!response.ok) return false;
-    const result = (await response.json()) as ApiResponse;
+    const result = await upsertRow(record.type, record.data);
     if (!result.success) return false;
     markRecordsSynced([record.id], true);
     return true;
@@ -131,13 +112,16 @@ export async function retrySync(record: LocalRecord): Promise<boolean> {
 export async function syncMasterRecord(
   payload: MasterSyncPayload
 ): Promise<void> {
-  if (typeof window === "undefined" || !GAS_URL) return;
+  if (typeof window === "undefined" || !hasCloudSync()) return;
   try {
-    await fetch(GAS_URL, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(payload),
-    });
+    if (payload.action === "delete") {
+      await deleteRow(payload.type, String(payload.id ?? ""));
+    } else {
+      await upsertRow(
+        payload.type,
+        (payload.data ?? {}) as Record<string, string | number>
+      );
+    }
   } catch {
     // intentional no-op — localStorage is the primary store
   }

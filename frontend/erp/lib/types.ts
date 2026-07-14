@@ -17,9 +17,10 @@ export type SheetType =
   | "salary"
   | "driver-expense"
   | "ledger"
+  | "trip-expense"
   | (string & {});
 
-export type FieldType = "text" | "number" | "date" | "select" | "textarea";
+export type FieldType = "text" | "number" | "date" | "select" | "textarea" | "checkbox";
 
 export interface FieldConfig {
   name: string;

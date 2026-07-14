@@ -6,6 +6,10 @@ import { submitToSheet } from "@/lib/api";
 import {
   CARGO_FIELDS,
   CARGO_SECTIONS,
+  DIESEL_RATE_PER_LITER,
+  DIESEL_SUBFORM_FIELDS,
+  TRIP_EXPENSE_AMOUNT_FIELDS,
+  buildTripExpenseRef,
   getAllCargoSources,
   getCargoRouteDefaults,
   emptyValues,
@@ -17,17 +21,46 @@ import { companyName } from "@/lib/companies";
 import { findMaterialByCodeAll } from "@/lib/materialStore";
 import { findRecordsByDocumentNo } from "@/lib/localStore";
 import { findDriverById, getDriverOptions } from "@/lib/driverStore";
-import { getAllVehicles, getVehicleNoOptions } from "@/lib/vehicleStore";
 import {
-  findLatestDieselFillByVehicle,
-  listDieselFillsByVehicle,
+  MAINTENANCE_SUBFORM_SECTIONS,
+  getAllVehicles,
+  getNextMaintenanceId,
+  getVehicleNoOptions,
+  saveMaintenance,
+  type VehicleMaintenanceRecord,
+} from "@/lib/vehicleStore";
+import {
+  applyDieselCalc,
+  buildDieselFillRef,
+  fetchAllDieselFills,
+  filterDieselFillsByVehicle,
+  latestDieselFillForVehicle,
+  type LastDieselFill,
 } from "@/lib/dieselUtils";
 import { FormField } from "@/components/ui/FormField";
 import { FormSection } from "@/components/ui/FormSection";
+import { ColoredCheckboxField } from "@/components/ui/ColoredCheckboxField";
 import { StatusMessage } from "@/components/ui/StatusMessage";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Toast } from "@/components/ui/Toast";
 import { useConfirmSave } from "@/components/ui/useConfirmSave";
+
+/** Amber-filled button, standing out from the app's usual black-border/white
+ * buttons — diesel is amber (fuel) throughout the app. */
+const DIESEL_BUTTON_CLASS =
+  "border border-amber-700 bg-amber-500 px-4 py-1.5 text-sm font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50";
+
+function emptyDieselSubValues(): Record<string, string> {
+  return { ...emptyValues(DIESEL_SUBFORM_FIELDS), ratePerLiter: String(DIESEL_RATE_PER_LITER) };
+}
+
+function emptyMaintenanceSubValues(): Record<string, string> {
+  return emptyValues(MAINTENANCE_SUBFORM_SECTIONS.flatMap((s) => s.fields));
+}
+
+function emptyTripExpenseSubValues(): Record<string, string> {
+  return emptyValues(TRIP_EXPENSE_AMOUNT_FIELDS);
+}
 
 interface MaterialLineValues {
   id: string;
@@ -125,7 +158,11 @@ function createInvoice(fromType: string): InvoiceValues {
 }
 
 function emptySourceValues(): Record<string, string> {
-  return emptyValues(CARGO_FIELDS);
+  return {
+    ...emptyValues(CARGO_FIELDS),
+    dieselFilled: "false",
+    maintenanceThisTrip: "false",
+  };
 }
 
 /** Keeps an invoice's To valid for its (possibly just-changed) From — clears
@@ -227,7 +264,8 @@ function getTotalTripWeight(invoices: InvoiceValues[]): number {
 
 function buildCargoPayloads(
   values: Record<string, string>,
-  invoices: InvoiceValues[]
+  invoices: InvoiceValues[],
+  tripExpenseRef: string
 ): Record<string, string | number>[] {
   const weighted = recalculateLineWeights(invoices);
   const totalTripWeight = getTotalTripWeight(weighted);
@@ -247,6 +285,10 @@ function buildCargoPayloads(
 
       return parseFormData({
         ...values,
+        // A reference key, not an amount — safe to repeat on every row
+        // (same idea as dieselFillRef). The actual toll/diesel-used amounts
+        // live once on the linked Trip Expense record, not here.
+        tripExpenseRef,
         plantType: invoice.fromType,
         fromLocation: fromLabel,
         toParty: invoice.toParty,
@@ -300,7 +342,8 @@ function findDuplicateDocumentNo(
 
 function suggestDieselFillRef(
   values: Record<string, string>,
-  changedField: string
+  changedField: string,
+  allDieselFills: LastDieselFill[]
 ): Record<string, string> {
   if (changedField !== "vehicleNo") return values;
 
@@ -309,7 +352,7 @@ function suggestDieselFillRef(
     return { ...values, dieselFillRef: "" };
   }
 
-  const matchedFill = findLatestDieselFillByVehicle(vehicle);
+  const matchedFill = latestDieselFillForVehicle(allDieselFills, vehicle);
   return { ...values, dieselFillRef: matchedFill?.fillRef ?? "" };
 }
 
@@ -339,8 +382,8 @@ function applyDriverSuggestion(
   return values;
 }
 
-function ReviewRow({ label, value }: { label: string; value: string }) {
-  if (!value.trim()) return null;
+function ReviewRow({ label, value }: { label: string; value?: string }) {
+  if (!value?.trim()) return null;
   return (
     <div className="flex gap-2 text-xs text-black">
       <span className="w-32 shrink-0 font-medium">{label}</span>
@@ -380,6 +423,35 @@ export function CargoTransportForm() {
     };
   }, []);
 
+  // Diesel fill history comes straight from the Google Sheet — fetched once on
+  // mount and re-fetched whenever any record saves anywhere in the app, no
+  // localStorage involved.
+  const [allDieselFills, setAllDieselFills] = useState<LastDieselFill[]>([]);
+  useEffect(() => {
+    const refetch = () => {
+      fetchAllDieselFills().then(setAllDieselFills);
+    };
+    refetch();
+    window.addEventListener("sahyadri-local-update", refetch);
+    return () => window.removeEventListener("sahyadri-local-update", refetch);
+  }, []);
+
+  const [dieselSubValues, setDieselSubValues] = useState<Record<string, string>>(() =>
+    emptyDieselSubValues()
+  );
+  const [maintenanceSubValues, setMaintenanceSubValues] = useState<Record<string, string>>(() =>
+    emptyMaintenanceSubValues()
+  );
+  const [tripExpenseSubValues, setTripExpenseSubValues] = useState<Record<string, string>>(() =>
+    emptyTripExpenseSubValues()
+  );
+  // Tracks the ref actually persisted via "Save Diesel Fill Now", so the final
+  // Save Trip submit doesn't create a second, duplicate Diesel Tank record for
+  // the same fill. Cleared (by mismatching) whenever vehicle/first-invoice-date
+  // change after a save, so a stale save can't silently swallow a new fill.
+  const [savedDieselFillRef, setSavedDieselFillRef] = useState<string | null>(null);
+  const [savingDieselFill, setSavingDieselFill] = useState(false);
+
   const tripSections = useMemo(
     () =>
       TRIP_DETAIL_SECTIONS.map((section) => ({
@@ -403,8 +475,8 @@ export function CargoTransportForm() {
   const tripFields = useMemo(() => tripSections.flatMap((s) => s.fields), [tripSections]);
 
   const vehicleDieselFills = useMemo(
-    () => listDieselFillsByVehicle(values.vehicleNo),
-    [values.vehicleNo]
+    () => filterDieselFillsByVehicle(allDieselFills, values.vehicleNo),
+    [allDieselFills, values.vehicleNo]
   );
 
   const weightedInvoices = useMemo(() => recalculateLineWeights(invoices), [invoices]);
@@ -469,8 +541,87 @@ export function CargoTransportForm() {
 
   function handleChange(name: string, value: string) {
     setValues((prev) =>
-      applyDriverSuggestion(suggestDieselFillRef({ ...prev, [name]: value }, name), name)
+      applyDriverSuggestion(
+        suggestDieselFillRef({ ...prev, [name]: value }, name, allDieselFills),
+        name
+      )
     );
+    resetStatus();
+  }
+
+  async function handleSaveDieselFillNow() {
+    const fillDate = invoices[0]?.date ?? "";
+    if (!values.vehicleNo.trim() || !fillDate) {
+      setStatus("error");
+      setMessage("Enter vehicle and the first invoice's date before saving the diesel fill.");
+      return;
+    }
+    if (!(Number(dieselSubValues.fillAmount) > 0)) {
+      setStatus("error");
+      setMessage("Enter a tank fill amount before saving the diesel fill.");
+      return;
+    }
+
+    setSavingDieselFill(true);
+    resetStatus();
+
+    try {
+      const fillRef = buildDieselFillRef(values.vehicleNo, fillDate);
+      const result = await submitToSheet({
+        type: "diesel",
+        data: parseFormData({
+          fillRef,
+          date: fillDate,
+          vehicleNo: values.vehicleNo,
+          driverId: values.driverId,
+          // Diesel Tank rows use "ID - Name" (matches the Diesel Tank module's
+          // own driver select) — Cargo's own driverName field is plain-name-only.
+          driverName: findDriverById(values.driverId)?.label ?? values.driverName,
+          ...dieselSubValues,
+        }),
+      });
+
+      if (!result.success) {
+        setStatus("error");
+        setMessage(result.message);
+        return;
+      }
+
+      setValues((prev) => ({ ...prev, dieselFillRef: fillRef }));
+      setSavedDieselFillRef(fillRef);
+      // Re-fetch from the Sheet right away so the new fill is guaranteed to be
+      // in "recent fills" before the user looks, instead of relying on the
+      // background refetch from the "sahyadri-local-update" listener alone.
+      setAllDieselFills(await fetchAllDieselFills());
+      notify(`Diesel fill saved — ref "${fillRef}" is ready to pick in Trip Expenses below.`);
+    } catch {
+      setStatus("error");
+      setMessage("Network error saving the diesel fill.");
+    } finally {
+      setSavingDieselFill(false);
+    }
+  }
+
+  function handleDieselSubChange(name: string, value: string) {
+    setDieselSubValues((prev) => applyDieselCalc({ ...prev, [name]: value }, name));
+    resetStatus();
+  }
+
+  function handleTripExpenseSubChange(name: string, value: string) {
+    setTripExpenseSubValues((prev) => ({ ...prev, [name]: value }));
+    resetStatus();
+  }
+
+  function handleMaintenanceSubChange(name: string, value: string) {
+    setMaintenanceSubValues((prev) => {
+      const next = { ...prev, [name]: value };
+      if (name === "labourCost" || name === "partsCost") {
+        const labour = Number(name === "labourCost" ? value : prev.labourCost) || 0;
+        const parts = Number(name === "partsCost" ? value : prev.partsCost) || 0;
+        next.totalCost = labour + parts > 0 ? String(Math.round((labour + parts) * 100) / 100) : "";
+      }
+      return next;
+    });
     resetStatus();
   }
 
@@ -565,10 +716,18 @@ export function CargoTransportForm() {
     resetStatus();
   }
 
+  function resetLinkedRecordState() {
+    setDieselSubValues(emptyDieselSubValues());
+    setMaintenanceSubValues(emptyMaintenanceSubValues());
+    setTripExpenseSubValues(emptyTripExpenseSubValues());
+    setSavedDieselFillRef(null);
+  }
+
   function switchSource(source: CargoSource) {
     setActiveSource(source);
     setValues(emptySourceValues());
     setInvoices([createInvoice(source.type)]);
+    resetLinkedRecordState();
     setStatus("idle");
     setMessage("");
   }
@@ -576,22 +735,98 @@ export function CargoTransportForm() {
   async function performSave() {
     setSubmitting(true);
 
-    const records = buildCargoPayloads(values, invoices);
+    const fillDate = invoices[0]?.date ?? "";
 
     try {
+      // Trip Expense record is created *first* (if either amount is filled
+      // in) so its ref is known before the cargo rows are built — each row
+      // just carries the reference, never the raw amounts (which would
+      // otherwise repeat once per material line and inflate a SUM() over
+      // the column, since one trip can produce many rows).
+      let tripExpenseRef = "";
+      const hasTripExpense =
+        Number(tripExpenseSubValues.dieselUsedThisTrip) > 0 ||
+        Number(tripExpenseSubValues.tollOverloadAmount) > 0;
+      if (hasTripExpense) {
+        tripExpenseRef = buildTripExpenseRef(values.vehicleNo, fillDate);
+        await submitToSheet({
+          type: "trip-expense",
+          data: parseFormData({
+            id: tripExpenseRef,
+            date: fillDate,
+            vehicleNo: values.vehicleNo,
+            driverId: values.driverId,
+            driverName: findDriverById(values.driverId)?.label ?? values.driverName,
+            source: "cargo",
+            documentNos: invoices.map((inv) => inv.documentNo).filter(Boolean).join(", "),
+            ...tripExpenseSubValues,
+          }),
+        });
+      }
+
+      const records = buildCargoPayloads(values, invoices, tripExpenseRef);
+
       const result = await submitToSheet({
         type: "cargo",
         records,
       });
 
-      if (result.success) {
-        notify(result.message);
-        setValues(emptySourceValues());
-        setInvoices([createInvoice(activeSource.type)]);
-      } else {
+      if (!result.success) {
         setStatus("error");
         setMessage(result.message);
+        return;
       }
+
+      if (values.dieselFilled === "true") {
+        const fillRef = buildDieselFillRef(values.vehicleNo, fillDate);
+        // Skip re-creating it if "Save Diesel Fill Now" already persisted this
+        // exact vehicle+date fill — otherwise (or if vehicle/date changed
+        // since that save) create it now as a fallback.
+        if (savedDieselFillRef !== fillRef) {
+          await submitToSheet({
+            type: "diesel",
+            data: parseFormData({
+              fillRef,
+              date: fillDate,
+              vehicleNo: values.vehicleNo,
+              driverId: values.driverId,
+              driverName: findDriverById(values.driverId)?.label ?? values.driverName,
+              ...dieselSubValues,
+            }),
+          });
+        }
+      }
+
+      if (values.maintenanceThisTrip === "true") {
+        const vehicle = getAllVehicles().find((v) => v.registrationNo === values.vehicleNo.trim());
+        const record: VehicleMaintenanceRecord = {
+          id: getNextMaintenanceId(),
+          vehicleId: vehicle?.id ?? "",
+          vehicleNo: values.vehicleNo,
+          date: fillDate,
+          maintenanceType: maintenanceSubValues.maintenanceType,
+          partName: maintenanceSubValues.partName,
+          partNumber: maintenanceSubValues.partNumber,
+          description: maintenanceSubValues.description,
+          vendorName: maintenanceSubValues.vendorName,
+          invoiceNo: maintenanceSubValues.invoiceNo,
+          labourCost: maintenanceSubValues.labourCost,
+          partsCost: maintenanceSubValues.partsCost,
+          totalCost: maintenanceSubValues.totalCost,
+          odometerKm: maintenanceSubValues.odometerKm,
+          nextServiceKm: maintenanceSubValues.nextServiceKm,
+          nextServiceDate: maintenanceSubValues.nextServiceDate,
+          doneBy: maintenanceSubValues.doneBy,
+          remarks: maintenanceSubValues.remarks,
+          addedAt: new Date().toISOString(),
+        };
+        saveMaintenance(record);
+      }
+
+      notify(result.message);
+      setValues(emptySourceValues());
+      setInvoices([createInvoice(activeSource.type)]);
+      resetLinkedRecordState();
     } catch {
       setStatus("error");
       setMessage("Network error. Check your connection and Web App URL.");
@@ -603,6 +838,7 @@ export function CargoTransportForm() {
   function handleDiscard() {
     setValues(emptySourceValues());
     setInvoices([createInvoice(activeSource.type)]);
+    resetLinkedRecordState();
     cancel();
     notify("Entry deleted — form cleared.", "error");
   }
@@ -852,63 +1088,146 @@ export function CargoTransportForm() {
           </FormSection>
         )}
 
+        <div className="border-2 border-amber-500 p-1.5">
+          <FormSection
+            title="4. Diesel Tank Fill"
+            description="Check this if the vehicle's tank was filled on this trip — save it here first so its ref is ready to pick in Trip Expenses below."
+          >
+            <div className="sm:col-span-2">
+              <ColoredCheckboxField
+                id="field-dieselFilled"
+                label="Diesel filled on this trip?"
+                checked={values.dieselFilled === "true"}
+                onChange={(checked) => handleChange("dieselFilled", checked ? "true" : "false")}
+                color="amber"
+              />
+            </div>
+            {values.dieselFilled === "true" && (
+              <>
+                <div className="sm:col-span-2 grid gap-x-3 gap-y-2.5 sm:grid-cols-2">
+                  {DIESEL_SUBFORM_FIELDS.map((field) => (
+                    <div key={field.name} className={field.colSpan === 2 ? "sm:col-span-2" : undefined}>
+                      <FormField
+                        field={field}
+                        value={dieselSubValues[field.name]}
+                        onChange={handleDieselSubChange}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="sm:col-span-2 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleSaveDieselFillNow}
+                    disabled={savingDieselFill}
+                    className={DIESEL_BUTTON_CLASS}
+                  >
+                    {savingDieselFill ? "Saving…" : "Save Diesel Fill Now"}
+                  </button>
+                  {savedDieselFillRef === buildDieselFillRef(values.vehicleNo, invoices[0]?.date ?? "") &&
+                    savedDieselFillRef && (
+                      <span className="text-xs text-black">
+                        Saved — ref <span className="font-semibold">{savedDieselFillRef}</span> ready below.
+                      </span>
+                    )}
+                </div>
+              </>
+            )}
+          </FormSection>
+        </div>
+
         {EXPENSE_SECTION && (
           <FormSection
-            title="4. Trip Expenses"
-            description="Diesel and toll — fill after cargo details."
+            title="5. Trip Expenses"
+            description={
+              values.dieselFilled === "true"
+                ? "Diesel and toll — saved as one Trip Expense record for the whole trip, not repeated per line."
+                : "Diesel and toll for this trip. Tank wasn't filled today, so pick which prior fill this trip's diesel came from."
+            }
           >
             {EXPENSE_SECTION.fields.map((field) => (
-              <div
-                key={field.name}
-                className={
-                  field.colSpan === 2 || field.name === "dieselFillRef"
-                    ? "sm:col-span-2"
-                    : undefined
-                }
-              >
-                {field.name === "dieselFillRef" ? (
-                  <div className="grid gap-2 sm:grid-cols-[2fr_1fr]">
-                    <FormField
-                      field={field}
-                      value={values[field.name]}
-                      onChange={handleChange}
-                    />
-                    <div className="flex flex-col gap-0.5">
-                      <label
-                        htmlFor="recent-diesel-fills"
-                        className="text-xs font-medium text-black"
-                      >
-                        Recent fills
-                      </label>
-                      <select
-                        id="recent-diesel-fills"
-                        value={values.dieselFillRef || ""}
-                        onChange={(e) => handleChange("dieselFillRef", e.target.value)}
-                        disabled={!values.vehicleNo.trim() || vehicleDieselFills.length === 0}
-                        className="w-full border border-black bg-white px-2.5 py-1.5 text-sm text-black outline-none focus:border-black disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        <option value="">
-                          {values.vehicleNo.trim()
-                            ? vehicleDieselFills.length > 0
-                              ? "Select fill ref..."
-                              : "No fills for vehicle"
-                            : "Enter vehicle first"}
-                        </option>
-                        {vehicleDieselFills.map((fill) => (
-                          <option key={fill.fillRef} value={fill.fillRef}>
-                            {fill.fillRef}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                ) : (
-                  <FormField field={field} value={values[field.name]} onChange={handleChange} />
-                )}
+              <div key={field.name} className="sm:col-span-2 grid gap-2 sm:grid-cols-[2fr_1fr]">
+                <FormField
+                  field={
+                    field.name === "dieselFillRef" && values.dieselFilled !== "true"
+                      ? { ...field, required: true }
+                      : field
+                  }
+                  value={values[field.name]}
+                  onChange={handleChange}
+                />
+                <div className="flex flex-col gap-0.5">
+                  <label htmlFor="recent-diesel-fills" className="text-xs font-medium text-black">
+                    Recent fills
+                  </label>
+                  <select
+                    id="recent-diesel-fills"
+                    value={values.dieselFillRef || ""}
+                    onChange={(e) => handleChange("dieselFillRef", e.target.value)}
+                    disabled={!values.vehicleNo.trim() || vehicleDieselFills.length === 0}
+                    className="w-full border border-black bg-white px-2.5 py-1.5 text-sm text-black outline-none focus:border-black disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="">
+                      {values.vehicleNo.trim()
+                        ? vehicleDieselFills.length > 0
+                          ? "Select fill ref..."
+                          : "No fills for vehicle"
+                        : "Enter vehicle first"}
+                    </option>
+                    {vehicleDieselFills.map((fill) => (
+                      <option key={fill.fillRef} value={fill.fillRef}>
+                        {fill.fillRef}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
+            ))}
+            {TRIP_EXPENSE_AMOUNT_FIELDS.map((field) => (
+              <FormField
+                key={field.name}
+                field={field}
+                value={tripExpenseSubValues[field.name]}
+                onChange={handleTripExpenseSubChange}
+              />
             ))}
           </FormSection>
         )}
+
+        <div className="space-y-3 border-2 border-blue-500 p-1.5">
+          <FormSection
+            title="6. Vehicle Maintenance"
+            description="Check this if maintenance was done on this trip — it creates a Vehicle Maintenance record linked to this vehicle and date."
+          >
+            <div className="sm:col-span-2">
+              <ColoredCheckboxField
+                id="field-maintenanceThisTrip"
+                label="Maintenance done on this trip?"
+                checked={values.maintenanceThisTrip === "true"}
+                onChange={(checked) => handleChange("maintenanceThisTrip", checked ? "true" : "false")}
+                color="blue"
+              />
+            </div>
+          </FormSection>
+
+          {values.maintenanceThisTrip === "true" &&
+            MAINTENANCE_SUBFORM_SECTIONS.map((section) => (
+              <FormSection
+                key={section.id}
+                title={section.title}
+                columns={section.id === "type-description" ? 2 : section.id === "cost" ? 3 : 4}
+              >
+                {section.fields.map((field) => (
+                  <FormField
+                    key={field.name}
+                    field={field}
+                    value={maintenanceSubValues[field.name]}
+                    onChange={handleMaintenanceSubChange}
+                  />
+                ))}
+              </FormSection>
+            ))}
+        </div>
 
         <StatusMessage type={status} message={message} />
 
@@ -1004,12 +1323,14 @@ export function CargoTransportForm() {
             />
           </div>
 
-          {(values.dieselFillRef || values.dieselUsedThisTrip || values.tollOverloadAmount) && (
+          {(values.dieselFillRef ||
+            tripExpenseSubValues.dieselUsedThisTrip ||
+            tripExpenseSubValues.tollOverloadAmount) && (
             <div>
               <p className="mb-1 text-xs font-semibold text-black">Expenses</p>
               <ReviewRow label="Diesel Fill Ref" value={values.dieselFillRef} />
-              <ReviewRow label="Diesel Used (Rs)" value={values.dieselUsedThisTrip} />
-              <ReviewRow label="Toll + Overload (Rs)" value={values.tollOverloadAmount} />
+              <ReviewRow label="Diesel Used (Rs)" value={tripExpenseSubValues.dieselUsedThisTrip} />
+              <ReviewRow label="Toll + Overload (Rs)" value={tripExpenseSubValues.tollOverloadAmount} />
             </div>
           )}
 

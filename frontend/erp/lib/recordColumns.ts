@@ -7,6 +7,7 @@ import {
   INFRA_FIELDS,
   LEDGER_FIELDS,
   SALARY_FIELDS,
+  TRIP_EXPENSE_RECORD_FIELDS,
 } from "./sheetConfig";
 import type { FieldConfig, LocalRecord, SheetType } from "./types";
 
@@ -79,6 +80,12 @@ export const RECORD_VIEWS: RecordViewConfig[] = [
     label: "Customer Ledger",
     types: ["ledger"],
     columns: [...META_COLUMNS, ID_COLUMN, ...columnsFromFields(LEDGER_FIELDS)],
+  },
+  {
+    id: "trip-expense",
+    label: "Trip Expenses",
+    types: ["trip-expense"],
+    columns: [...META_COLUMNS, ...columnsFromFields(TRIP_EXPENSE_RECORD_FIELDS)],
   },
 ];
 

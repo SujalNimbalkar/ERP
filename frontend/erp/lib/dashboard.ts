@@ -10,11 +10,21 @@ import type { LocalRecord } from "./types";
  *
  * Correctness rules:
  * - Cargo rows are per material line; a *trip* is the group of rows sharing
- *   type + vehicleNo + date + lrNo. Trip-level amounts (toll, diesel-used)
- *   repeat on every row and are counted once per trip; per-line
- *   transportAmount is summed.
+ *   type + vehicleNo + date + lrNo; per-line transportAmount is summed.
+ * - Trip-level amounts (toll, diesel-used) live in their own Trip Expense
+ *   record (one row per trip), referenced from cargo rows via
+ *   `tripExpenseRef` — see `tripExpenseMap()`. Rows saved before that record
+ *   existed still carry the amount inline on every row of the trip; those
+ *   fall back to reading it off the first row, same as before.
  * - Diesel cost comes from actual tank fills (fillAmount), not the per-trip
  *   estimates, so fuel money is never double counted.
+ * - Infra & Crusher's earning is the crusher-to-sale margin ("difference"),
+ *   not the raw sale price ("totalAmount") — see `infraEarning()`. Total
+ *   Amount ignores what was paid to the crusher, so using it directly would
+ *   overstate profit by the crusher cost on every trip.
+ * - Each Infra & Crusher record is one trip of its own (see
+ *   `collectInfraTrips()`) — counted in trip totals alongside cargo trips,
+ *   but with no kg weight (infra quantities are brass).
  */
 
 export interface DashboardFilters {
@@ -95,6 +105,23 @@ function num(v: string | number | undefined): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/**
+ * Infra & Crusher's real earning is the crusher-to-sale margin ("difference"
+ * = Total Amount − Crusher Amount), not the raw sale price — Total Amount
+ * alone overstates profit since it ignores what was paid to the crusher.
+ * Falls back to Total Amount for rows saved before "difference" existed, or
+ * where no crusher cost was tracked (difference never computed at all —
+ * checked by presence, not by being numerically 0, so a genuine break-even
+ * trip isn't mistaken for an untracked one).
+ */
+function infraEarning(data: Record<string, string | number>): number {
+  const diff = data.difference;
+  if (diff !== undefined && diff !== null && String(diff).trim() !== "") {
+    return num(diff);
+  }
+  return num(data.totalAmount);
+}
+
 function inRange(date: string, filters: DashboardFilters): boolean {
   if (!date) return false;
   return date >= filters.fromDate && date <= filters.toDate;
@@ -147,11 +174,27 @@ function vehicleDriverMap(): Map<string, string> {
   return map;
 }
 
+/** id → {toll, dieselUsed} map from Trip Expense records, referenced by a
+ * cargo row's `tripExpenseRef` — see the module doc comment above. */
+function tripExpenseMap(): Map<string, { toll: number; dieselUsed: number }> {
+  const map = new Map<string, { toll: number; dieselUsed: number }>();
+  for (const r of getLocalRecordsByType("trip-expense")) {
+    const id = String(r.data.id ?? "");
+    if (!id) continue;
+    map.set(id, {
+      toll: num(r.data.tollOverloadAmount),
+      dieselUsed: num(r.data.dieselUsedThisTrip),
+    });
+  }
+  return map;
+}
+
 /** Cargo rows deduped into trips, with the driver resolved per trip. */
 export function collectTrips(filters: DashboardFilters): Trip[] {
   const fillDrivers = fillDriverMap();
   const vehicleDrivers = vehicleDriverMap();
   const names = driverNameMap();
+  const tripExpenses = tripExpenseMap();
   const trips = new Map<string, Trip>();
 
   for (const record of getLocalRecordsByType("cargo")) {
@@ -176,6 +219,11 @@ export function collectTrips(filters: DashboardFilters): Trip[] {
         fillDrivers.get(String(data.dieselFillRef ?? "")) ||
         vehicleDrivers.get(vehicleNo) ||
         "";
+      // Trip-level values — resolved via the linked Trip Expense record
+      // (one row per trip, no double counting). Rows saved before that
+      // record existed still carry the amount inline, so fall back to
+      // reading it straight off this (first) row for those.
+      const linkedExpense = tripExpenses.get(String(data.tripExpenseRef ?? ""));
       trip = {
         key,
         plantType: type,
@@ -189,9 +237,8 @@ export function collectTrips(filters: DashboardFilters): Trip[] {
         lineCount: 0,
         totalWt: 0,
         earning: 0,
-        // trip-level values — taken from the first row only
-        toll: num(data.tollOverloadAmount),
-        dieselUsed: num(data.dieselUsedThisTrip),
+        toll: linkedExpense ? linkedExpense.toll : num(data.tollOverloadAmount),
+        dieselUsed: linkedExpense ? linkedExpense.dieselUsed : num(data.dieselUsedThisTrip),
         documentNos: [],
       };
       trips.set(key, trip);
@@ -206,6 +253,55 @@ export function collectTrips(filters: DashboardFilters): Trip[] {
   const list = Array.from(trips.values());
   if (filters.driverId) return list.filter((t) => t.driverId === filters.driverId);
   return list.sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/**
+ * Infra & Crusher records as trips — one record = one trip. Excluded from
+ * company/plant/driver-scoped views, same rule as the shared-cost blocks in
+ * vehicleSummary/monthlyPL (infra rows carry no company or plant, and legacy
+ * rows no driver — a scoped view would silently miscount them).
+ */
+export function collectInfraTrips(filters: DashboardFilters): Trip[] {
+  if (filters.companyId || filters.plantType || filters.driverId) return [];
+  const fillDrivers = fillDriverMap();
+  const vehicleDrivers = vehicleDriverMap();
+  const names = driverNameMap();
+  const tripExpenses = tripExpenseMap();
+  const trips: Trip[] = [];
+
+  for (const record of getLocalRecordsByType("infra")) {
+    const data = record.data;
+    const date = String(data.date ?? "");
+    if (!inRange(date, filters)) continue;
+    const vehicleNo = String(data.vehicleNo ?? "");
+    if (filters.vehicleNo && vehicleNo !== filters.vehicleNo) continue;
+    const driverId =
+      String(data.driverId ?? "") ||
+      fillDrivers.get(String(data.dieselFillRef ?? "")) ||
+      vehicleDrivers.get(vehicleNo) ||
+      "";
+    const linkedExpense = tripExpenses.get(String(data.tripExpenseRef ?? ""));
+    const challanNo = String(data.challanNo ?? "");
+    trips.push({
+      key: `infra|${record.id}`,
+      plantType: "infra",
+      date,
+      month: date.slice(0, 7),
+      vehicleNo,
+      lrNo: challanNo,
+      companyId: "",
+      driverId,
+      driverName: driverId ? (names.get(driverId) ?? driverId) : "",
+      lineCount: 1,
+      // Infra quantities are in brass, not kg — kept out of the weight totals.
+      totalWt: 0,
+      earning: infraEarning(data),
+      toll: linkedExpense ? linkedExpense.toll : num(data.tollOverloadAmount),
+      dieselUsed: linkedExpense ? linkedExpense.dieselUsed : num(data.dieselUsedThisTrip),
+      documentNos: challanNo ? [challanNo] : [],
+    });
+  }
+  return trips.sort((a, b) => b.date.localeCompare(a.date));
 }
 
 /** Generic filtered read of dated record types (diesel, salary, expenses…). */
@@ -249,10 +345,11 @@ export function vehicleSummary(filters: DashboardFilters): VehicleSummaryRow[] {
   const scoped = !!(filters.companyId || filters.plantType || filters.driverId);
 
   if (!scoped) {
-    for (const r of datedRecords("infra", filters)) {
-      const vehicleNo = String(r.data.vehicleNo ?? "");
-      if (!vehicleNo || (filters.vehicleNo && vehicleNo !== filters.vehicleNo)) continue;
-      get(vehicleNo).earnings = round2(get(vehicleNo).earnings + num(r.data.totalAmount));
+    for (const trip of collectInfraTrips(filters)) {
+      const row = get(trip.vehicleNo || "(no vehicle)");
+      row.trips += 1;
+      row.earnings = round2(row.earnings + trip.earning);
+      row.toll = round2(row.toll + trip.toll);
     }
 
     for (const r of datedRecords("diesel", filters)) {
@@ -435,11 +532,11 @@ export function monthlyPL(filters: DashboardFilters): MonthlyPLRow[] {
   const scoped = !!(filters.companyId || filters.plantType || filters.driverId);
 
   if (!scoped) {
-    for (const r of datedRecords("infra", filters)) {
-      const row = get(String(r.data.date ?? ""));
+    for (const trip of collectInfraTrips(filters)) {
+      const row = get(trip.date);
       if (!row) continue;
-      if (filters.vehicleNo && String(r.data.vehicleNo ?? "") !== filters.vehicleNo) continue;
-      row.revenue = round2(row.revenue + num(r.data.totalAmount));
+      row.revenue = round2(row.revenue + trip.earning);
+      row.toll = round2(row.toll + trip.toll);
     }
     for (const r of datedRecords("diesel", filters)) {
       const row = get(String(r.data.date ?? ""));
@@ -489,7 +586,7 @@ export interface PLTotals {
 
 export function plTotals(filters: DashboardFilters): PLTotals {
   const months = monthlyPL(filters);
-  const trips = collectTrips(filters);
+  const trips = [...collectTrips(filters), ...collectInfraTrips(filters)];
   const sum = (pick: (r: MonthlyPLRow) => number) =>
     round2(months.reduce((acc, r) => acc + pick(r), 0));
   const revenue = sum((r) => r.revenue);

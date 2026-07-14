@@ -1,3 +1,5 @@
+import { listSheets } from "@/app/actions/sheets";
+import { hasCloudSync } from "./storageMode";
 import { replaceWithSheetRecords } from "./localStore";
 import { replaceWithSheetVehicles } from "./vehicleStore";
 import { replaceWithSheetMaterials } from "./materialStore";
@@ -10,12 +12,12 @@ import type { SheetType } from "./types";
 /**
  * Pull-side of the Google Sheets sync: the Sheet is the source of truth,
  * localStorage is a cache. `refreshFromSheets` fetches every tab through the
- * Apps Script `?action=list` API and replaces the local caches, so data
- * entered on any device appears everywhere. Called on app start and from the
- * sidebar's Refresh button.
+ * `listSheets` server action (the browser never talks to Apps Script
+ * directly) and replaces the local caches, so data entered on any device
+ * appears everywhere. Called on app start and from the sidebar's Refresh
+ * button.
  */
 
-const GAS_URL = process.env.NEXT_PUBLIC_GAS_WEB_APP_URL ?? "";
 const LAST_FETCH_KEY = "sahyadri_last_sheet_fetch";
 
 /** Types that live in the shared records store (one row = one form entry).
@@ -30,6 +32,7 @@ const RECORD_TYPES: SheetType[] = [
   "salary",
   "driver-expense",
   "ledger",
+  "trip-expense",
 ];
 
 /** Short labels for the per-tab row counts in the refresh message. */
@@ -42,6 +45,7 @@ const TYPE_LABELS: Record<string, string> = {
   salary: "Salary",
   "driver-expense": "Driver Expenses",
   ledger: "Ledger",
+  "trip-expense": "Trip Expenses",
   materials: "Materials",
   "vehicle-master": "Vehicles",
   "vehicle-maintenance": "Maintenance",
@@ -67,16 +71,12 @@ export interface RefreshResult {
 }
 
 export async function refreshFromSheets(): Promise<RefreshResult> {
-  if (!GAS_URL) {
+  if (!hasCloudSync()) {
     return { success: false, message: "Google Sheets is not configured." };
   }
   let json: ListResponse;
   try {
-    const response = await fetch(`${GAS_URL}?action=list`);
-    if (!response.ok) {
-      return { success: false, message: `Google Sheets fetch failed (${response.status}).` };
-    }
-    json = (await response.json()) as ListResponse;
+    json = (await listSheets()) as ListResponse;
   } catch {
     return { success: false, message: "Network error fetching from Google Sheets." };
   }
@@ -148,11 +148,9 @@ export function getLastSheetFetch(): string | null {
  * can fall back to the local recent cache.
  */
 export async function fetchAuditLog(): Promise<AuditEntry[] | null> {
-  if (!GAS_URL) return null;
+  if (!hasCloudSync()) return null;
   try {
-    const response = await fetch(`${GAS_URL}?action=list&type=audit`);
-    if (!response.ok) return null;
-    const json = (await response.json()) as ListResponse;
+    const json = (await listSheets(["audit"])) as ListResponse;
     if (!json.success || !Array.isArray(json.data?.audit)) return null;
     return json.data.audit
       .filter((row) => row.id)

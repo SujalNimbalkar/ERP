@@ -142,6 +142,73 @@ export const PLANT_LOCATIONS = [
   "Minerva Enterprises",
 ];
 
+/** Shared by any trip-style module (Cargo, Infra & Crusher) that wants a
+ * reference to an active tank fill. NOTE: the actual toll/diesel-used
+ * *amounts* are NOT here — Cargo emits one row per material line, so a
+ * trip-level amount stored inline would repeat on every row and inflate any
+ * SUM() over the column. Those live in their own Trip Expense record instead
+ * (see `TRIP_EXPENSE_AMOUNT_FIELDS`/`TRIP_EXPENSE_RECORD_FIELDS` below),
+ * referenced via `tripExpenseRef` (safe to repeat per row, same idea as
+ * `dieselFillRef` here — a lookup key, not a summed amount). */
+export const TRIP_EXPENSE_FIELDS: FieldConfig[] = [
+  {
+    name: "dieselFillRef",
+    label: "Diesel Fill Ref",
+    type: "text",
+    placeholder: "e.g. MH11CH2030-2026-07-03",
+  },
+];
+
+/** The two amounts entered once per trip, saved as a single Trip Expense
+ * record rather than inline on every cargo/infra row. */
+export const TRIP_EXPENSE_AMOUNT_FIELDS: FieldConfig[] = [
+  {
+    name: "dieselUsedThisTrip",
+    label: "Diesel Used This Trip (Rs)",
+    type: "number",
+    placeholder: "Leave blank if unknown — reconcile in sheet",
+  },
+  {
+    name: "tollOverloadAmount",
+    label: "Toll + Overload (Rs)",
+    type: "number",
+  },
+];
+
+/**
+ * Client-generated id for a Trip Expense record — generated *before* saving
+ * so the same ref can be stamped onto every cargo/infra row of the same
+ * submission as `tripExpenseRef` (a lookup key, safe to repeat per row —
+ * same idea as `dieselFillRef`). Not a sequential auto-id like other modules
+ * (see the note on `ID_PREFIXES` in localStore.ts for why).
+ */
+export function buildTripExpenseRef(vehicleNo: string, date: string): string {
+  const vehicle = vehicleNo.trim().toUpperCase().replace(/\s+/g, "");
+  const day = date.trim();
+  if (!vehicle || !day) return "";
+  const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `TRX-${vehicle}-${day}-${suffix}`;
+}
+
+/** Schema for the dedicated Trip Expense sheet — one row per trip, created
+ * from Cargo Transport or Infra & Crusher whenever either amount above is
+ * filled in. */
+export const TRIP_EXPENSE_RECORD_FIELDS: FieldConfig[] = [
+  { name: "id", label: "ID (auto)", type: "text", readOnly: true },
+  DATE_FIELD,
+  { ...VEHICLE_NO_FIELD, label: "Vehicle No", placeholder: undefined, required: false },
+  { name: "driverId", label: "Driver ID", type: "text" },
+  { name: "driverName", label: "Driver Name", type: "text" },
+  ...TRIP_EXPENSE_AMOUNT_FIELDS,
+  { name: "source", label: "Source Module", type: "text", readOnly: true, placeholder: "cargo or infra" },
+  {
+    name: "documentNos",
+    label: "Invoice / Document Nos",
+    type: "text",
+    placeholder: "Comma-separated — Cargo only",
+  },
+];
+
 /** Form sections — columns aligned to Google Sheet headers */
 export const CARGO_SECTIONS: FieldSection[] = [
   {
@@ -285,25 +352,22 @@ export const CARGO_SECTIONS: FieldSection[] = [
     id: "expenses",
     title: "Trip Expenses",
     description: "Link to an active tank fill — enter this trip's diesel share if known",
+    fields: TRIP_EXPENSE_FIELDS,
+  },
+  {
+    // Not rendered via this section's generic grouping — CargoTransportForm
+    // renders these two inline as ColoredCheckboxField, same as Infra & Crusher.
+    // Kept here purely so they flow into CARGO_FIELDS (schema + sheet columns).
+    id: "diesel-maintenance-flags",
+    title: "Diesel & Maintenance Flags",
     fields: [
+      { name: "dieselFilled", label: "Diesel filled on this trip?", type: "checkbox" },
+      { name: "maintenanceThisTrip", label: "Maintenance done on this trip?", type: "checkbox" },
       {
-        name: "dieselFillRef",
-        label: "Diesel Fill Ref",
+        name: "tripExpenseRef",
+        label: "Trip Expense Ref (auto)",
         type: "text",
-        placeholder: "e.g. MH11CH2030-2026-07-03",
-      },
-      {
-        name: "dieselUsedThisTrip",
-        label: "Diesel Used This Trip (Rs)",
-        type: "number",
-        // step: "0.01",
-        placeholder: "Leave blank if unknown — reconcile in sheet",
-      },
-      {
-        name: "tollOverloadAmount",
-        label: "Toll + Overload (Rs)",
-        type: "number",
-        // step: "0.01",
+        readOnly: true,
       },
     ],
   },
@@ -444,22 +508,148 @@ export const DIESEL_FILL_FIELDS: FieldConfig[] = [
   },
 ];
 
+/** Diesel Tank Fill fields relevant once vehicle/date/driver are already known
+ * from a trip's own fields (Cargo, Infra & Crusher) — everything except those
+ * shared fields, which the linking trip form supplies itself. */
+export const DIESEL_SUBFORM_FIELDS: FieldConfig[] = DIESEL_FILL_FIELDS.filter(
+  (f) => !["fillRef", "date", "vehicleNo", "driverName", "driverId"].includes(f.name)
+);
+
 export const INFRA_FIELDS: FieldConfig[] = [
   DATE_FIELD,
   { ...VEHICLE_NO_FIELD, label: "Vehicle No", placeholder: undefined },
   { name: "crusherChallanNo", label: "Crusher Challan No", type: "text" },
   { name: "materialType", label: "Type of Material", type: "text", placeholder: "Dabar, Khadi, Sand..." },
-  { name: "crusherRate", label: "Crusher Rate", type: "number", step: "0.01" },
-  { name: "crusherBrass", label: "Crusher Brass", type: "number", step: "0.01" },
-  { name: "crusherAmount", label: "Crusher Amount", type: "number", step: "0.01" },
-  { name: "diesel", label: "Diesel", type: "number", step: "0.01" },
+  { name: "crusherRate", label: "Crusher Rate (Rs/Brass)", type: "number", step: "0.01" },
+  { name: "crusherBrass", label: "Crusher Brass (Total Brass)", type: "number", step: "0.01" },
+  { name: "crusherLocation", label: "Crusher Location", type: "text", placeholder: "e.g. crusher site" },
+  {
+    name: "crusherAmount",
+    label: "Crusher Amount (auto)",
+    type: "number",
+    step: "0.01",
+    readOnly: true,
+    placeholder: "Auto: crusher rate x crusher brass",
+  },
   { name: "challanNo", label: "Challan No", type: "text" },
   { name: "customerName", label: "Customer Name", type: "text", required: true },
+  { name: "clientLocation", label: "Client Location", type: "text", placeholder: "e.g. delivery site, plant name" },
   { name: "qtyBrass", label: "Qty (In Brass)", type: "number", step: "0.01" },
-  { name: "rate", label: "Rate", type: "number", step: "0.01" },
-  { name: "totalAmount", label: "Total Amount", type: "number", step: "0.01" },
-  { name: "difference", label: "Difference", type: "number", step: "0.01" },
+  { name: "rate", label: "Selling Rate (Rs/Brass)", type: "number", step: "0.01" },
+  {
+    name: "totalAmount",
+    label: "Total Amount (auto)",
+    type: "number",
+    step: "0.01",
+    readOnly: true,
+    placeholder: "Auto: selling rate x qty brass",
+  },
+  {
+    name: "difference",
+    label: "Difference (auto)",
+    type: "number",
+    step: "0.01",
+    readOnly: true,
+    placeholder: "Auto: total amount - crusher amount",
+  },
+  // Appended below so existing sheet rows keep their column alignment.
+  {
+    name: "driverId",
+    label: "Driver",
+    type: "select",
+    options: [],
+  },
+  {
+    name: "driverName",
+    label: "Driver Name (auto)",
+    type: "text",
+    readOnly: true,
+  },
+  ...TRIP_EXPENSE_FIELDS,
+  {
+    name: "dieselFilled",
+    label: "Diesel filled on this trip?",
+    type: "checkbox",
+  },
+  {
+    name: "maintenanceThisTrip",
+    label: "Maintenance done on this trip?",
+    type: "checkbox",
+  },
+  {
+    name: "tripExpenseRef",
+    label: "Trip Expense Ref (auto)",
+    type: "text",
+    readOnly: true,
+  },
 ];
+
+/**
+ * Crusher Amount = crusher rate x crusher brass; Total Amount = selling rate
+ * x qty brass; Difference = Total Amount - Crusher Amount — recomputed from
+ * whatever numbers are currently present, not tied to a single changed
+ * field. Shared by the Infra & Crusher form and the Saved Records edit view
+ * (so fixing a typo there re-derives the same amounts instead of leaving
+ * them stale).
+ */
+export function recalcInfraAmounts(values: Record<string, string>): Record<string, string> {
+  const crusherRate = Number(values.crusherRate);
+  const crusherBrass = Number(values.crusherBrass);
+  const crusherAmount =
+    crusherRate > 0 && crusherBrass > 0 ? Math.round(crusherRate * crusherBrass * 100) / 100 : null;
+
+  const rate = Number(values.rate);
+  const qtyBrass = Number(values.qtyBrass);
+  const totalAmount = rate > 0 && qtyBrass > 0 ? Math.round(rate * qtyBrass * 100) / 100 : null;
+
+  const difference =
+    crusherAmount !== null && totalAmount !== null
+      ? Math.round((totalAmount - crusherAmount) * 100) / 100
+      : null;
+
+  return {
+    ...values,
+    crusherAmount: crusherAmount !== null ? String(crusherAmount) : "",
+    totalAmount: totalAmount !== null ? String(totalAmount) : "",
+    difference: difference !== null ? String(difference) : "",
+  };
+}
+
+/**
+ * Row-scoped Cargo recalculation for the Saved Records edit view — a single
+ * already-saved row has no access to the rest of its trip (other invoices'
+ * weight feeding the weight-tier rate), so this only re-derives what's
+ * knowable from the row itself: Total Wt from Qty x Per Part Wt (for EA rows)
+ * or Qty directly (for KG rows), and Transport Amount from Transport Rate x
+ * Total Wt. Brass-uom rows and direct edits to Total Wt itself are left
+ * alone — the user's own number wins.
+ */
+export function recalcCargoRowAmounts(
+  values: Record<string, string>,
+  changedField: string
+): Record<string, string> {
+  const next = { ...values };
+
+  if (changedField === "quantity" || changedField === "perPartWt" || changedField === "uom") {
+    const qty = Number(next.quantity);
+    const perPart = Number(next.perPartWt);
+    if (next.uom === "KG" && qty) {
+      next.totalWt = String(qty);
+    } else if (next.uom === "EA" && qty && perPart) {
+      next.totalWt = String(Math.round(qty * perPart * 1000) / 1000);
+    }
+  }
+
+  if (["quantity", "perPartWt", "uom", "transportRate", "totalWt"].includes(changedField)) {
+    const totalWt = Number(next.totalWt);
+    const transportRate = Number(next.transportRate);
+    if (transportRate > 0 && totalWt > 0) {
+      next.transportAmount = String(Math.round(transportRate * totalWt * 100) / 100);
+    }
+  }
+
+  return next;
+}
 
 export const PALLET_FIELDS: FieldConfig[] = [
   BILLING_COMPANY_FIELD,

@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { deleteLocalRecord, getLocalRecords, updateLocalRecord } from "@/lib/localStore";
 import { retrySync, syncMasterRecord } from "@/lib/api";
-import { getRecordIdKey } from "@/lib/sheetConfig";
+import { getRecordIdKey, recalcCargoRowAmounts, recalcInfraAmounts } from "@/lib/sheetConfig";
+import { applyDieselCalc } from "@/lib/dieselUtils";
 import {
   RECORD_VIEWS,
   downloadCsv,
@@ -37,6 +38,24 @@ function parseEditedData(draft: Record<string, string>): Record<string, string |
     result[key] = /^-?\d+(\.\d+)?$/.test(trimmed) ? Number(trimmed) : trimmed;
   }
   return result;
+}
+
+/**
+ * Re-derives calculated fields when editing a saved record, same formulas
+ * the entry forms use — otherwise fixing a typo in, say, Rate silently
+ * leaves Transport Amount stale. Each record type keeps its own formula set;
+ * types with no such relationship (drivers, salary, ledger…) pass through
+ * unchanged.
+ */
+function applyRecordFieldCalc(
+  type: LocalRecord["type"],
+  draft: Record<string, string>,
+  changedField: string
+): Record<string, string> {
+  if (type === "cargo") return recalcCargoRowAmounts(draft, changedField);
+  if (type === "infra") return recalcInfraAmounts(draft);
+  if (type === "diesel") return applyDieselCalc(draft, changedField);
+  return draft;
 }
 
 export function RecordsView() {
@@ -442,7 +461,14 @@ export function RecordsView() {
                       onChange={(e) =>
                         setEditing((prev) =>
                           prev
-                            ? { ...prev, draft: { ...prev.draft, [key]: e.target.value } }
+                            ? {
+                                ...prev,
+                                draft: applyRecordFieldCalc(
+                                  prev.record.type,
+                                  { ...prev.draft, [key]: e.target.value },
+                                  key
+                                ),
+                              }
                             : prev
                         )
                       }

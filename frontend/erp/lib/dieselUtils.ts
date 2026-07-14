@@ -1,3 +1,6 @@
+import { listSheets } from "@/app/actions/sheets";
+import { hasCloudSync } from "./storageMode";
+
 /** Build a unique fill reference to link tank fills with cargo trips */
 export function buildDieselFillRef(vehicleNo: string, date: string): string {
   const vehicle = vehicleNo.trim().toUpperCase().replace(/\s+/g, "");
@@ -6,8 +9,38 @@ export function buildDieselFillRef(vehicleNo: string, date: string): string {
   return `${vehicle}-${day}`;
 }
 
-export const LAST_DIESEL_FILL_KEY = "sahyadri_last_diesel_fill";
-export const DIESEL_FILL_HISTORY_KEY = "sahyadri_diesel_fill_history";
+/**
+ * Auto-calculator between amount and liters at the entered rate:
+ * editing the amount (or the rate) derives liters; editing liters derives
+ * the amount. Shared by any form that embeds a Diesel Tank Fill block
+ * (Diesel Tank module itself, and Infra & Crusher's "Diesel filled?" checkbox).
+ */
+export function applyDieselCalc(
+  values: Record<string, string>,
+  changedField: string
+): Record<string, string> {
+  const rate = Number(values.ratePerLiter);
+  if (!(rate > 0)) return values;
+  const amount = Number(values.fillAmount);
+  const liters = Number(values.liters);
+
+  if (changedField === "fillAmount" || changedField === "ratePerLiter") {
+    if (amount > 0) {
+      return { ...values, liters: String(Math.round((amount / rate) * 100) / 100) };
+    }
+    if (changedField === "fillAmount") return { ...values, liters: "" };
+    if (liters > 0) {
+      return { ...values, fillAmount: String(Math.round(liters * rate * 100) / 100) };
+    }
+  }
+  if (changedField === "liters") {
+    return {
+      ...values,
+      fillAmount: liters > 0 ? String(Math.round(liters * rate * 100) / 100) : "",
+    };
+  }
+  return values;
+}
 
 export interface LastDieselFill {
   fillRef: string;
@@ -26,66 +59,47 @@ function sortByLatestDate(a: LastDieselFill, b: LastDieselFill): number {
   return b.fillRef.localeCompare(a.fillRef);
 }
 
-export function saveLastDieselFill(fill: LastDieselFill) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(LAST_DIESEL_FILL_KEY, JSON.stringify(fill));
-  saveDieselFillHistory(fill);
-}
-
-export function loadLastDieselFill(): LastDieselFill | null {
-  if (typeof window === "undefined") return null;
-  const raw = localStorage.getItem(LAST_DIESEL_FILL_KEY);
-  if (!raw) return null;
+/**
+ * Every diesel fill row, fetched live from the Diesel Tank sheet tab — the
+ * Sheet is the only source of truth here, nothing is cached in localStorage.
+ * Returns [] if cloud sync isn't configured or the fetch fails, so callers
+ * (the "recent fills" dropdowns, vehicle-change auto-suggestions) degrade to
+ * "no suggestions" rather than throwing.
+ */
+export async function fetchAllDieselFills(): Promise<LastDieselFill[]> {
+  if (!hasCloudSync()) return [];
   try {
-    return JSON.parse(raw) as LastDieselFill;
-  } catch {
-    return null;
-  }
-}
-
-export function loadDieselFillHistory(): LastDieselFill[] {
-  if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(DIESEL_FILL_HISTORY_KEY);
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (item): item is LastDieselFill =>
-        Boolean(
-          item &&
-            typeof item.fillRef === "string" &&
-            typeof item.vehicleNo === "string" &&
-            typeof item.fillAmount === "string" &&
-            typeof item.date === "string"
-        )
-    );
+    const json = await listSheets(["diesel"]);
+    if (!json.success || !Array.isArray(json.data?.diesel)) return [];
+    return json.data.diesel
+      .map((row) => ({
+        fillRef: String(row.fillRef ?? ""),
+        vehicleNo: String(row.vehicleNo ?? ""),
+        fillAmount: String(row.fillAmount ?? ""),
+        date: String(row.date ?? ""),
+      }))
+      .filter((f) => f.fillRef);
   } catch {
     return [];
   }
 }
 
-export function saveDieselFillHistory(fill: LastDieselFill) {
-  if (typeof window === "undefined") return;
-  const existing = loadDieselFillHistory();
-  const withoutSameRef = existing.filter((entry) => entry.fillRef !== fill.fillRef);
-  const next = [fill, ...withoutSameRef].sort(sortByLatestDate).slice(0, 200);
-  localStorage.setItem(DIESEL_FILL_HISTORY_KEY, JSON.stringify(next));
-}
-
-export function findLatestDieselFillByVehicle(vehicleNo: string): LastDieselFill | null {
-  const normalizedVehicle = normalizeVehicle(vehicleNo);
-  if (!normalizedVehicle) return null;
-  const matched = loadDieselFillHistory()
-    .filter((entry) => normalizeVehicle(entry.vehicleNo) === normalizedVehicle)
-    .sort(sortByLatestDate);
-  return matched[0] ?? null;
-}
-
-export function listDieselFillsByVehicle(vehicleNo: string): LastDieselFill[] {
+/** Filters an already-fetched fill list down to one vehicle, newest first. */
+export function filterDieselFillsByVehicle(
+  fills: LastDieselFill[],
+  vehicleNo: string
+): LastDieselFill[] {
   const normalizedVehicle = normalizeVehicle(vehicleNo);
   if (!normalizedVehicle) return [];
-  return loadDieselFillHistory()
+  return fills
     .filter((entry) => normalizeVehicle(entry.vehicleNo) === normalizedVehicle)
     .sort(sortByLatestDate);
+}
+
+/** The most recent fill for one vehicle from an already-fetched fill list. */
+export function latestDieselFillForVehicle(
+  fills: LastDieselFill[],
+  vehicleNo: string
+): LastDieselFill | null {
+  return filterDieselFillsByVehicle(fills, vehicleNo)[0] ?? null;
 }

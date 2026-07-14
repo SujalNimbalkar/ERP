@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { SheetForm } from "@/components/forms/SheetForm";
-import { INFRA_FIELDS, LEDGER_FIELDS, injectOptions } from "@/lib/sheetConfig";
+import { LEDGER_FIELDS, injectOptions } from "@/lib/sheetConfig";
 import { getVehicleNoOptions } from "@/lib/vehicleStore";
 import type { FieldConfig } from "@/lib/types";
 
@@ -18,23 +18,6 @@ function useVehicleNoOptions(): string[] {
     return () => window.removeEventListener("sahyadri-vehicle-update", sync);
   }, []);
   return options;
-}
-
-export function InfraCrusherForm() {
-  const vehicleNoOptions = useVehicleNoOptions();
-
-  return (
-    <SheetForm
-      title="Infra & Crusher Transport"
-      sheetType="infra"
-      fields={injectVehicleNo(INFRA_FIELDS, vehicleNoOptions)}
-      headerExtra={
-        <p className="mt-1 text-sm text-black">
-          Crusher and sand transport entries for the Sahyadri Infra tab.
-        </p>
-      }
-    />
-  );
 }
 
 export function CustomerLedgerForm() {

@@ -7,6 +7,6 @@ const AppShell = dynamic(
   { ssr: false }
 );
 
-export function ClientShell() {
-  return <AppShell />;
+export function ClientShell({ cloudSync }: { cloudSync: boolean }) {
+  return <AppShell cloudSync={cloudSync} />;
 }

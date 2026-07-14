@@ -1,14 +1,24 @@
-const GAS_URL = process.env.NEXT_PUBLIC_GAS_WEB_APP_URL ?? "";
+/**
+ * Whether cloud sync (Google Sheets via the server actions) is available.
+ * The GAS URL is server-only now, so the client can't inspect env vars —
+ * instead the server component in app/page.tsx computes the flag and
+ * AppShell seeds it here (synchronously, before any first render reads it).
+ */
+let cloudSync = false;
 
-export function hasCloudSync(): boolean {
-  return !!GAS_URL;
+export function setCloudSyncFlag(value: boolean) {
+  cloudSync = value;
 }
 
-/** @deprecated use hasCloudSync() — mode is now always local+cloud when URL set */
+export function hasCloudSync(): boolean {
+  return cloudSync;
+}
+
+/** @deprecated use hasCloudSync() — mode is now always local+cloud when configured */
 export function isLocalStorageMode(): boolean {
-  return !GAS_URL;
+  return !cloudSync;
 }
 
 export function storageModeLabel(): string {
-  return GAS_URL ? "Local + Google Sheets" : "Local (browser only)";
+  return cloudSync ? "Local + Google Sheets" : "Local (browser only)";
 }

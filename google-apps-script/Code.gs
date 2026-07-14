@@ -5,7 +5,49 @@
  * Pallet columns match Delivery Challan format from sample bills.
  */
 
-const SPREADSHEET_ID = "YOUR_SPREADSHEET_ID_HERE";
+/**
+ * Runtime configuration lives in Script Properties (Project Settings →
+ * Script Properties), never in code:
+ *   SPREADSHEET_ID — the spreadsheet to operate on
+ *   API_TOKEN      — shared secret the Next.js server sends with every request
+ *   REQUIRE_TOKEN  — "true" to enforce API_TOKEN; anything else = open
+ *                    (rollout/rollback lever — flip without redeploying)
+ */
+const SPREADSHEET_ID_FALLBACK = "YOUR_SPREADSHEET_ID_HERE";
+
+function getProps_() {
+  return PropertiesService.getScriptProperties();
+}
+
+function getSpreadsheet_() {
+  const id = getProps_().getProperty("SPREADSHEET_ID") || SPREADSHEET_ID_FALLBACK;
+  return SpreadsheetApp.openById(id);
+}
+
+/**
+ * Shared-secret check. While REQUIRE_TOKEN != "true" every request passes —
+ * that keeps old clients working during rollout and is the instant rollback
+ * lever. Comparison is over SHA-256 digests so string-compare timing reveals
+ * nothing about the token.
+ */
+function isAuthorized_(suppliedToken) {
+  const props = getProps_();
+  if (props.getProperty("REQUIRE_TOKEN") !== "true") return true;
+  const expected = props.getProperty("API_TOKEN") || "";
+  if (!expected || !suppliedToken) return false;
+  const a = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    String(suppliedToken),
+  );
+  const b = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, expected);
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  return diff === 0;
+}
+
+/** Hard limits on write requests — quota/flooding protection. */
+const MAX_BATCH_RECORDS = 200;
+const MAX_BODY_BYTES = 500000;
 
 const SHEET_MAP = {
   // NOTE: "cargo" (below) is the live, unified Cargo Transport tab used by the
@@ -25,6 +67,7 @@ const SHEET_MAP = {
   salary: "Salary",
   "driver-expense": "Driver Expenses",
   ledger: "Ledger",
+  "trip-expense": "Trip Expenses",
   materials: "Material Master",
   "vehicle-master": "Vehicle Master",
   "vehicle-maintenance": "Vehicle Maintenance",
@@ -34,7 +77,11 @@ const SHEET_MAP = {
   audit: "Audit Log",
 };
 
-const CARGO_COLUMNS = [
+/** Columns shared by the legacy per-plant tabs and the shared Cargo Trips
+ * tab, in the order existing sheet rows were written (ends at driverName).
+ * Rows are read/written by column INDEX, never by header — so nothing may
+ * ever be inserted mid-list; new columns go in CARGO_MARKER_COLUMNS below. */
+const CARGO_BASE_COLUMNS = [
   "id",
   "documentNo",
   "date",
@@ -66,10 +113,24 @@ const CARGO_COLUMNS = [
   "driverName",
 ];
 
+/** New marker/ref columns — appended after every pre-existing column (on the
+ * shared Cargo Trips tab that includes `plantType`) so old rows stay aligned.
+ * Whether this trip also filled the tank / did vehicle maintenance — the
+ * actual diesel/maintenance data lands in their own tabs, these are just
+ * markers. `tripExpenseRef` references this trip's Trip Expenses row
+ * (toll/diesel-used amounts live there now, one row per trip, instead of
+ * repeating inline on every material-line row here — see the "trip-expense"
+ * tab below). */
+const CARGO_MARKER_COLUMNS = ["dieselFilled", "maintenanceThisTrip", "tripExpenseRef"];
+
+const CARGO_COLUMNS = CARGO_BASE_COLUMNS.concat(CARGO_MARKER_COLUMNS);
+
 /** Every plant lives in one shared tab now — `plantType` (e.g. "cargo-h19")
- * says which one, appended last so it doesn't disturb the legacy per-plant
- * tabs that still use plain CARGO_COLUMNS. */
-const CARGO_TRIPS_COLUMNS = CARGO_COLUMNS.concat(["plantType"]);
+ * says which one. It has sat right after `driverName` since the tab was
+ * created, so it MUST stay at that index — the marker columns come after. */
+const CARGO_TRIPS_COLUMNS = CARGO_BASE_COLUMNS
+  .concat(["plantType"])
+  .concat(CARGO_MARKER_COLUMNS);
 
 const COLUMN_ORDER = {
   cargo: CARGO_TRIPS_COLUMNS,
@@ -95,6 +156,20 @@ const COLUMN_ORDER = {
     "rate",
     "totalAmount",
     "difference",
+    // Appended last so existing sheet rows keep their column alignment —
+    // driver link, trip expenses, and the diesel/maintenance checkboxes
+    // (the actual diesel/maintenance data lands in their own tabs).
+    "driverId",
+    "driverName",
+    "crusherLocation",
+    "clientLocation",
+    "dieselFillRef",
+    "dieselUsedThisTrip",
+    "tollOverloadAmount",
+    "dieselFilled",
+    "maintenanceThisTrip",
+    // See the "trip-expense" tab below — same reasoning as on the cargo tab.
+    "tripExpenseRef",
   ],
   pallets: [
     "id",
@@ -166,6 +241,21 @@ const COLUMN_ORDER = {
     "brass",
     "debit",
     "credit",
+  ],
+  // One row per trip (not per material line) — referenced from cargo/infra
+  // rows via `tripExpenseRef` so toll/diesel-used amounts never repeat.
+  // `id` is client-generated (see buildTripExpenseRef in sheetConfig.ts),
+  // not this backend's usual auto-sequence.
+  "trip-expense": [
+    "id",
+    "date",
+    "vehicleNo",
+    "driverId",
+    "driverName",
+    "dieselUsedThisTrip",
+    "tollOverloadAmount",
+    "source",
+    "documentNos",
   ],
   materials: ["id", "code", "name", "weightPerPieceKg", "ratePerKg", "addedAt"],
   // One list for both Cargo Plants and Delivery Vendors — `isCargoPlant`
@@ -285,47 +375,62 @@ function resolveTab(ss, type) {
 }
 
 /**
- * GET ?action=list          → all tabs as { type: rows[] }
- * GET ?action=list&type=a,b → only the given types
- * Rows are mapped back to objects using COLUMN_ORDER; dates become yyyy-MM-dd.
+ * Reads the requested types (comma string, array, or empty = all non-audit)
+ * as { type: rows[] }. Shared by the POST action=list route and the
+ * TRANSITIONAL GET route below. Rows are mapped back to objects using
+ * COLUMN_ORDER; dates become yyyy-MM-dd.
+ */
+function listData_(requested) {
+  const ss = getSpreadsheet_();
+  let types;
+  if (requested && requested.length) {
+    types = Array.isArray(requested) ? requested : String(requested).split(",");
+  } else {
+    // The audit history can get large — it is only returned when asked for
+    // explicitly (type=audit), never in the default startup sweep.
+    types = Object.keys(COLUMN_ORDER).filter(function (t) {
+      return t !== "audit";
+    });
+  }
+  const data = {};
+  const missing = [];
+  const missingTypes = [];
+  types.forEach(function (type) {
+    const resolved = resolveTab(ss, type);
+    if (!resolved) return;
+    const rows = readSheetRows(ss, type);
+    if (rows === null) {
+      // Tab not found — flag it via missingTypes so the client knows NOT to
+      // treat this as "confirmed zero rows" and wipe its local cache.
+      missing.push(resolved.tabName);
+      missingTypes.push(type);
+    } else {
+      data[type] = rows;
+    }
+  });
+  return {
+    success: true,
+    data: data,
+    missing: missing,
+    missingTypes: missingTypes,
+  };
+}
+
+/**
+ * TRANSITIONAL: GET ?action=list still serves data (token-optional) so the
+ * previously-deployed frontend keeps working while the server layer rolls
+ * out. Delete the list branch when creating the rotated deployment — after
+ * that, GET is a bare health ping and all data flows through POST.
  */
 function doGet(e) {
   const action = e && e.parameter ? e.parameter.action : "";
   if (action === "list") {
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const requested = e.parameter.type;
-    let types;
-    if (requested) {
-      types = requested.split(",");
-    } else {
-      // The audit history can get large — it is only returned when asked for
-      // explicitly (?type=audit), never in the default startup sweep.
-      types = Object.keys(COLUMN_ORDER).filter(function (t) {
-        return t !== "audit";
-      });
+    try {
+      return jsonResponse(listData_(e.parameter.type));
+    } catch (err) {
+      console.error("doGet list failed: " + (err && err.stack ? err.stack : err));
+      return jsonResponse({ success: false, message: "Request failed" });
     }
-    const data = {};
-    const missing = [];
-    const missingTypes = [];
-    types.forEach(function (type) {
-      const resolved = resolveTab(ss, type);
-      if (!resolved) return;
-      const rows = readSheetRows(ss, type);
-      if (rows === null) {
-        // Tab not found — flag it via missingTypes so the client knows NOT to
-        // treat this as "confirmed zero rows" and wipe its local cache.
-        missing.push(resolved.tabName);
-        missingTypes.push(type);
-      } else {
-        data[type] = rows;
-      }
-    });
-    return jsonResponse({
-      success: true,
-      data: data,
-      missing: missing,
-      missingTypes: missingTypes,
-    });
   }
   return jsonResponse({
     success: true,
@@ -354,6 +459,16 @@ function ensureHeaderRow(sheet, columns) {
   if (!isHeaderRow(first, columns)) {
     sheet.insertRowBefore(1);
     sheet.getRange(1, 1, 1, columns.length).setValues([columns]);
+    return;
+  }
+  // A valid header that's shorter than the layout (tab predates newly
+  // appended columns) — fill in the missing trailing column names. Only
+  // trailing cells can be blank here; isHeaderRow vouched for the rest.
+  for (var i = 0; i < columns.length; i++) {
+    if (first[i] === "" || first[i] === null) {
+      sheet.getRange(1, i + 1, 1, columns.length - i).setValues([columns.slice(i)]);
+      break;
+    }
   }
 }
 
@@ -428,83 +543,154 @@ function isHeaderRow(row, columns) {
 function doPost(e) {
   try {
     if (!e || !e.postData || !e.postData.contents) {
-      throw new Error("Empty request body");
+      return jsonResponse({ success: false, message: "Empty request body" });
+    }
+    if (e.postData.contents.length > MAX_BODY_BYTES) {
+      return jsonResponse({ success: false, message: "Request too large" });
     }
 
-    const payload = JSON.parse(e.postData.contents);
-    const type = payload.type;
+    let payload;
+    try {
+      payload = JSON.parse(e.postData.contents);
+    } catch (parseErr) {
+      return jsonResponse({ success: false, message: "Invalid request" });
+    }
+
+    if (!isAuthorized_(payload.token)) {
+      return jsonResponse({ success: false, message: "Unauthorized" });
+    }
+
     const action = payload.action || "append";
 
-    if (!type) {
-      throw new Error("Unknown type: " + type);
+    if (action === "list") {
+      return jsonResponse(listData_(payload.type));
     }
 
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const type = payload.type;
+    if (!type) {
+      return jsonResponse({ success: false, message: "Unknown type" });
+    }
+
+    const ss = getSpreadsheet_();
     const resolved = resolveTab(ss, type);
     if (!resolved) {
-      throw new Error("Unknown type: " + type);
+      return jsonResponse({ success: false, message: "Unknown type" });
     }
 
     const tabName = resolved.tabName;
     const columns = resolved.columns;
     const sheet = ss.getSheetByName(tabName);
     if (!sheet) {
-      throw new Error("Sheet tab not found: " + tabName);
+      return jsonResponse({ success: false, message: "Sheet tab not found" });
     }
-    // Row 1 is always the column names; data lives from row 2 down.
-    ensureHeaderRow(sheet, columns);
 
-    if (action === "delete") {
-      const rowNum = findRowById(sheet, payload.id);
-      if (rowNum > 0) sheet.deleteRow(rowNum);
+    // All mutations run under the script lock — findRowById → deleteRow /
+    // setValues sequences race across concurrent requests otherwise (row
+    // numbers shift after a delete; concurrent appends compute the same
+    // getLastRow()+1).
+    const lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      // Row 1 is always the column names; data lives from row 2 down.
+      ensureHeaderRow(sheet, columns);
+
+      if (action === "delete") {
+        const rowNum = findRowById(sheet, payload.id);
+        if (rowNum > 0) sheet.deleteRow(rowNum);
+        appendServerAudit_(ss, "delete", type, String(payload.id || ""), "server: deleted 1 row");
+        return jsonResponse({
+          success: true,
+          message: "Deleted from " + tabName,
+        });
+      }
+
+      if (action === "upsert") {
+        const data = payload.data || {};
+        const idKey = columns[0];
+        const id = data[idKey];
+        const row = buildRow(columns, data);
+        const rowNum = findRowById(sheet, id);
+        if (rowNum > 0) {
+          sheet.getRange(rowNum, 1, 1, row.length).setValues([row]);
+        } else {
+          sheet.appendRow(row);
+        }
+        appendServerAudit_(ss, "upsert", type, String(id || ""), "server: upserted 1 row");
+        return jsonResponse({ success: true, message: "Upserted in " + tabName });
+      }
+
+      // Default: append
+      const records =
+        payload.records && payload.records.length
+          ? payload.records
+          : [payload.data || {}];
+
+      if (records.length > MAX_BATCH_RECORDS) {
+        return jsonResponse({ success: false, message: "Request too large" });
+      }
+
+      const rows = records.map(function (record) {
+        return buildRow(columns, record);
+      });
+
+      if (rows.length === 1) {
+        sheet.appendRow(rows[0]);
+      } else {
+        sheet
+          .getRange(sheet.getLastRow() + 1, 1, rows.length, rows[0].length)
+          .setValues(rows);
+      }
+
+      appendServerAudit_(
+        ss,
+        "append",
+        type,
+        String((records[0] && records[0][columns[0]]) || ""),
+        "server: appended " + rows.length + " row(s)",
+      );
+
       return jsonResponse({
         success: true,
-        message: "Deleted from " + tabName,
+        message: rows.length + " record(s) saved to " + tabName,
+        type: type,
       });
+    } finally {
+      lock.releaseLock();
     }
-
-    if (action === "upsert") {
-      const data = payload.data || {};
-      const idKey = columns[0];
-      const id = data[idKey];
-      const row = buildRow(columns, data);
-      const rowNum = findRowById(sheet, id);
-      if (rowNum > 0) {
-        sheet.getRange(rowNum, 1, 1, row.length).setValues([row]);
-      } else {
-        sheet.appendRow(row);
-      }
-      return jsonResponse({ success: true, message: "Upserted in " + tabName });
-    }
-
-    // Default: append
-    const records =
-      payload.records && payload.records.length
-        ? payload.records
-        : [payload.data || {}];
-
-    const rows = records.map(function (record) {
-      return buildRow(columns, record);
-    });
-
-    if (rows.length === 1) {
-      sheet.appendRow(rows[0]);
-    } else {
-      sheet
-        .getRange(sheet.getLastRow() + 1, 1, rows.length, rows[0].length)
-        .setValues(rows);
-    }
-
-    return jsonResponse({
-      success: true,
-      message: rows.length + " record(s) saved to " + tabName,
-      type: type,
-    });
   } catch (err) {
-    return jsonResponse({
-      success: false,
-      message: err.message || String(err),
-    });
+    // Real error goes to the Executions log only — callers get a generic
+    // message so internals (tab names, stack info) never leak.
+    console.error("doPost failed: " + (err && err.stack ? err.stack : err));
+    return jsonResponse({ success: false, message: "Request failed" });
+  }
+}
+
+/**
+ * Tamper-evident audit floor, written server-side on every successful
+ * mutation. The client still uploads its own detailed audit entries (with
+ * before/after diffs) as type:"audit" rows — those are forgeable/skippable,
+ * these are not. Distinct ids mean the two never collide. Never lets an
+ * audit failure break the mutation that already succeeded.
+ */
+function appendServerAudit_(ss, action, type, recordId, summary) {
+  if (type === "audit") return;
+  try {
+    const columns = COLUMN_ORDER["audit"];
+    let sheet = ss.getSheetByName(SHEET_MAP["audit"]);
+    if (!sheet) sheet = ss.insertSheet(SHEET_MAP["audit"]);
+    ensureHeaderRow(sheet, columns);
+    sheet.appendRow(
+      buildRow(columns, {
+        id: "srv-" + Utilities.getUuid(),
+        timestamp: new Date().toISOString(),
+        action: action,
+        recordType: type,
+        recordId: recordId,
+        summary: summary,
+      }),
+    );
+  } catch (auditErr) {
+    console.error("audit append failed: " + auditErr);
   }
 }
 
@@ -520,10 +706,22 @@ function findRowById(sheet, id) {
   return -1;
 }
 
+/**
+ * Neutralizes spreadsheet formula injection: a string cell starting with
+ * = + - @ or a tab/CR would otherwise be written as a live formula
+ * (e.g. =IMPORTXML(...)) that executes when someone opens the sheet. The
+ * leading apostrophe forces Sheets to store it as text; numbers (including
+ * negatives) are untouched because they arrive as JSON numbers, not strings.
+ */
+function sanitizeCell_(value) {
+  if (typeof value !== "string") return value;
+  return /^[=+\-@\t\r]/.test(value) ? "'" + value : value;
+}
+
 function buildRow(columns, data) {
   return columns.map(function (key) {
     const value = data[key];
-    return value !== undefined && value !== null ? value : "";
+    return value !== undefined && value !== null ? sanitizeCell_(value) : "";
   });
 }
 
@@ -545,7 +743,7 @@ function jsonResponse(obj) {
  * tabs; they're left in place as an untouched backup.
  */
 function migrateCargoSheets() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = getSpreadsheet_();
   const cargoColumns = COLUMN_ORDER["cargo"];
 
   let cargoSheet = ss.getSheetByName(SHEET_MAP["cargo"]);

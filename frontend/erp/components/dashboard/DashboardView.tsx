@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  collectInfraTrips,
   collectTrips,
   driverSummary,
   monthlyPL,
@@ -101,10 +102,10 @@ export function DashboardView() {
   const drivers = useMemo(() => driverSummary(filters), [filters, version]);
   const staffPayroll = useMemo(() => staffPayrollSummary(filters), [filters, version]);
   const months = useMemo(() => monthlyPL(filters), [filters, version]);
-  const allTrips = useMemo(
-    () => collectTrips({ ...filters, vehicleNo: "", driverId: "" }),
-    [fromDate, toDate, companyId, plantType, version]
-  );
+  const allTrips = useMemo(() => {
+    const unscoped = { ...filters, vehicleNo: "", driverId: "" };
+    return [...collectTrips(unscoped), ...collectInfraTrips(unscoped)];
+  }, [fromDate, toDate, companyId, plantType, version]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
   const vehicleOptions = useMemo(

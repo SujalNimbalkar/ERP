@@ -205,6 +205,13 @@ export const VEHICLE_MAINTENANCE_SECTIONS: FieldSection[] = [
   },
 ];
 
+/** Vehicle Maintenance sections relevant once vehicle/date are already known
+ * from a trip's own fields (Cargo, Infra & Crusher) — everything except the
+ * "vehicle-date" section, which the linking trip form supplies itself. */
+export const MAINTENANCE_SUBFORM_SECTIONS: FieldSection[] = VEHICLE_MAINTENANCE_SECTIONS.filter(
+  (s) => s.id !== "vehicle-date"
+);
+
 /** Populate an options-based field (assignedDriverId, vehicleId) with live {value,label} pairs. */
 export function injectFieldOptions(
   sections: FieldSection[],

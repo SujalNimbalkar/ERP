@@ -25,6 +25,23 @@ export function FormField({ field, value, onChange, id: idOverride }: FormFieldP
   const id = idOverride ?? `field-${field.name}`;
   const safeValue = value ?? "";
 
+  if (field.type === "checkbox") {
+    return (
+      <div className="flex items-center gap-2 pt-4">
+        <input
+          id={id}
+          type="checkbox"
+          checked={safeValue === "true"}
+          onChange={(e) => onChange(field.name, e.target.checked ? "true" : "false")}
+          className="h-4 w-4 border border-black"
+        />
+        <label htmlFor={id} className="text-xs font-medium text-black">
+          {field.label}
+        </label>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-0.5">
       <label htmlFor={id} className="text-xs font-medium text-black">
