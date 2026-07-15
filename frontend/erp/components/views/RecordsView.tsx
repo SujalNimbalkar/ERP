@@ -74,6 +74,7 @@ export function RecordsView() {
   const [vehicleFilter, setVehicleFilter] = useState("");
   const [driverFilter, setDriverFilter] = useState("");
   const [syncFilter, setSyncFilter] = useState<"all" | "synced" | "pending">("all");
+  const [dateSort, setDateSort] = useState<"newest" | "oldest">("newest");
   const [pageSize, setPageSize] = useState<number | "all">(100);
   const [editing, setEditing] = useState<EditState | null>(null);
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
@@ -194,6 +195,14 @@ export function RecordsView() {
         syncFilter === "pending" ? r.synced === false : r.synced !== false
       );
     }
+    // Sort by the view's date field when it has one; views with no date
+    // column (e.g. Driver Master) fall back to when the record was saved.
+    const sortValue = (r: LocalRecord) =>
+      (dateFilterKey ? String(r.data[dateFilterKey] ?? "") : "") || r.savedAt;
+    result = [...result].sort((a, b) => {
+      const cmp = sortValue(a).localeCompare(sortValue(b));
+      return dateSort === "newest" ? -cmp : cmp;
+    });
     return result;
   }, [
     viewRecords,
@@ -205,6 +214,7 @@ export function RecordsView() {
     vehicleFilter,
     driverFilter,
     syncFilter,
+    dateSort,
   ]);
 
   const visibleRecords = useMemo(
@@ -591,6 +601,17 @@ export function RecordsView() {
                 </select>
               </label>
             )}
+            <label className="flex flex-col gap-0.5 text-xs text-black">
+              Sort by date
+              <select
+                value={dateSort}
+                onChange={(e) => setDateSort(e.target.value as typeof dateSort)}
+                className="border border-black bg-white px-2 py-1.5 text-sm text-black outline-none"
+              >
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+              </select>
+            </label>
             <label className="flex flex-col gap-0.5 text-xs text-black">
               Show
               <select
