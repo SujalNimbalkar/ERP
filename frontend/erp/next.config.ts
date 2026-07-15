@@ -12,11 +12,14 @@ const securityHeaders = [
     // connect-src 'self' is safe because the browser never talks to Apps
     // Script directly anymore — all Sheets access goes through server
     // actions on this same origin. style-src stays 'unsafe-inline' because
-    // Tailwind v4 injects styles via <style> tags.
+    // Tailwind v4 injects styles via <style> tags. fonts.googleapis.com/
+    // fonts.gstatic.com are allowed because next/font/google falls back to
+    // loading Geist live instead of self-hosting it under this build.
     value:
-      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
-      "img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; " +
-      "base-uri 'self'; form-action 'self'",
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; " +
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+      "img-src 'self' data: blob:; font-src 'self' https://fonts.gstatic.com; " +
+      "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
   },
 ];
 
