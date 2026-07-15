@@ -25,6 +25,13 @@ import { useConfirmSave } from "@/components/ui/useConfirmSave";
 
 const AUDIT_TAB = "__audit__";
 
+/** Priority order of date-like field keys to filter on — the first one
+ * present in a view's columns wins (most views use "date"; Salary doesn't
+ * have one, so it falls back to "paymentDate"). */
+const DATE_FILTER_CANDIDATES = ["date", "paymentDate", "scheduledSalaryDate"];
+
+const PAGE_SIZES: (number | "all")[] = [50, 100, 200, "all"];
+
 interface EditState {
   record: LocalRecord;
   draft: Record<string, string>;
@@ -62,6 +69,12 @@ export function RecordsView() {
   const [records, setRecords] = useState<LocalRecord[]>([]);
   const [activeViewId, setActiveViewId] = useState(RECORD_VIEWS[0].id);
   const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [vehicleFilter, setVehicleFilter] = useState("");
+  const [driverFilter, setDriverFilter] = useState("");
+  const [syncFilter, setSyncFilter] = useState<"all" | "synced" | "pending">("all");
+  const [pageSize, setPageSize] = useState<number | "all">(100);
   const [editing, setEditing] = useState<EditState | null>(null);
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
   const [auditSearch, setAuditSearch] = useState("");
@@ -107,10 +120,97 @@ export function RecordsView() {
     };
   }, []);
 
+  const viewRecords = useMemo(
+    () => filterRecordsForView(records, activeView),
+    [records, activeView]
+  );
+
+  const dateFilterKey = useMemo(
+    () =>
+      DATE_FILTER_CANDIDATES.find((k) => activeView.columns.some((c) => c.key === k)) ??
+      null,
+    [activeView]
+  );
+  const hasVehicleColumn = useMemo(
+    () => activeView.columns.some((c) => c.key === "vehicleNo"),
+    [activeView]
+  );
+  const hasDriverColumn = useMemo(
+    () => activeView.columns.some((c) => c.key === "driverName"),
+    [activeView]
+  );
+
+  const vehicleOptions = useMemo(() => {
+    if (!hasVehicleColumn) return [];
+    const set = new Set<string>();
+    viewRecords.forEach((r) => {
+      const v = String(r.data.vehicleNo ?? "").trim();
+      if (v) set.add(v);
+    });
+    return Array.from(set).sort();
+  }, [viewRecords, hasVehicleColumn]);
+
+  const driverOptions = useMemo(() => {
+    if (!hasDriverColumn) return [];
+    const set = new Set<string>();
+    viewRecords.forEach((r) => {
+      const v = String(r.data.driverName ?? "").trim();
+      if (v) set.add(v);
+    });
+    return Array.from(set).sort();
+  }, [viewRecords, hasDriverColumn]);
+
+  const hasActiveFilters =
+    !!dateFrom || !!dateTo || !!vehicleFilter || !!driverFilter || syncFilter !== "all";
+
+  function clearFilters() {
+    setDateFrom("");
+    setDateTo("");
+    setVehicleFilter("");
+    setDriverFilter("");
+    setSyncFilter("all");
+  }
+
   const filteredRecords = useMemo(() => {
     if (isAuditTab) return [];
-    return searchRecords(filterRecordsForView(records, activeView), search);
-  }, [records, activeView, search, isAuditTab]);
+    let result = searchRecords(viewRecords, search);
+    if (dateFilterKey && (dateFrom || dateTo)) {
+      result = result.filter((r) => {
+        const raw = String(r.data[dateFilterKey] ?? "");
+        if (!raw) return false;
+        if (dateFrom && raw < dateFrom) return false;
+        if (dateTo && raw > dateTo) return false;
+        return true;
+      });
+    }
+    if (vehicleFilter) {
+      result = result.filter((r) => String(r.data.vehicleNo ?? "") === vehicleFilter);
+    }
+    if (driverFilter) {
+      result = result.filter((r) => String(r.data.driverName ?? "") === driverFilter);
+    }
+    if (syncFilter !== "all") {
+      result = result.filter((r) =>
+        syncFilter === "pending" ? r.synced === false : r.synced !== false
+      );
+    }
+    return result;
+  }, [
+    viewRecords,
+    search,
+    isAuditTab,
+    dateFilterKey,
+    dateFrom,
+    dateTo,
+    vehicleFilter,
+    driverFilter,
+    syncFilter,
+  ]);
+
+  const visibleRecords = useMemo(
+    () => (pageSize === "all" ? filteredRecords : filteredRecords.slice(0, pageSize)),
+    [filteredRecords, pageSize]
+  );
 
   const pendingRecords = useMemo(() => records.filter((r) => r.synced === false), [records]);
 
@@ -149,6 +249,7 @@ export function RecordsView() {
   function switchTab(id: string) {
     setActiveViewId(id);
     setSearch("");
+    clearFilters();
     setEditing(null);
     if (id === AUDIT_TAB) refreshAudit();
   }
@@ -423,6 +524,100 @@ export function RecordsView() {
             )}
           </div>
 
+          <div className="mb-4 flex flex-wrap items-end gap-3">
+            {dateFilterKey && (
+              <>
+                <label className="flex flex-col gap-0.5 text-xs text-black">
+                  From
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="border border-black bg-white px-2 py-1.5 text-sm text-black outline-none"
+                  />
+                </label>
+                <label className="flex flex-col gap-0.5 text-xs text-black">
+                  To
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="border border-black bg-white px-2 py-1.5 text-sm text-black outline-none"
+                  />
+                </label>
+              </>
+            )}
+            {hasVehicleColumn && (
+              <label className="flex flex-col gap-0.5 text-xs text-black">
+                Vehicle
+                <select
+                  value={vehicleFilter}
+                  onChange={(e) => setVehicleFilter(e.target.value)}
+                  className="border border-black bg-white px-2 py-1.5 text-sm text-black outline-none"
+                >
+                  <option value="">All vehicles</option>
+                  {vehicleOptions.map((v) => (
+                    <option key={v} value={v}>{v}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {hasDriverColumn && (
+              <label className="flex flex-col gap-0.5 text-xs text-black">
+                Driver
+                <select
+                  value={driverFilter}
+                  onChange={(e) => setDriverFilter(e.target.value)}
+                  className="border border-black bg-white px-2 py-1.5 text-sm text-black outline-none"
+                >
+                  <option value="">All drivers</option>
+                  {driverOptions.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {hasCloudSync() && (
+              <label className="flex flex-col gap-0.5 text-xs text-black">
+                Sync status
+                <select
+                  value={syncFilter}
+                  onChange={(e) => setSyncFilter(e.target.value as typeof syncFilter)}
+                  className="border border-black bg-white px-2 py-1.5 text-sm text-black outline-none"
+                >
+                  <option value="all">All</option>
+                  <option value="synced">Synced</option>
+                  <option value="pending">Pending</option>
+                </select>
+              </label>
+            )}
+            <label className="flex flex-col gap-0.5 text-xs text-black">
+              Show
+              <select
+                value={pageSize}
+                onChange={(e) =>
+                  setPageSize(e.target.value === "all" ? "all" : Number(e.target.value))
+                }
+                className="border border-black bg-white px-2 py-1.5 text-sm text-black outline-none"
+              >
+                {PAGE_SIZES.map((size) => (
+                  <option key={size} value={size}>
+                    {size === "all" ? "All rows" : `${size} rows`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="px-2 py-1.5 text-xs text-black underline"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
+
           {editing && (
             <div className="mb-4 border border-black p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -483,8 +678,9 @@ export function RecordsView() {
           {filteredRecords.length === 0 ? (
             <p className="border border-black px-4 py-6 text-sm text-black">
               No records for {activeView.label}
-              {search ? ` matching "${search}"` : ""}. Save entries from the form modules to see
-              them here.
+              {search ? ` matching "${search}"` : ""}
+              {hasActiveFilters ? " matching the current filters" : ""}. Save entries from the
+              form modules to see them here.
             </p>
           ) : (
             <div className="overflow-x-auto border border-black">
@@ -505,7 +701,7 @@ export function RecordsView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRecords.map((record) => {
+                  {visibleRecords.map((record) => {
                     const isEditingThis = editing?.record.id === record.id;
                     return (
                       <tr
@@ -564,7 +760,9 @@ export function RecordsView() {
           )}
 
           <p className="mt-3 text-xs text-black">
-            Showing {filteredRecords.length} row(s) · {activeView.columns.length} columns
+            Showing {visibleRecords.length} of {filteredRecords.length} row(s)
+            {filteredRecords.length !== viewRecords.length && ` (${viewRecords.length} total)`} ·{" "}
+            {activeView.columns.length} columns
           </p>
         </>
       )}
