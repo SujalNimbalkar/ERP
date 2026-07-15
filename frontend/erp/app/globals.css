@@ -12,11 +12,18 @@ body {
   font-family: var(--font-sans), system-ui, sans-serif;
 }
 
-input,
-select,
-textarea,
-button {
-  color: #000000;
+/* @layer base participates in Tailwind's normal cascade layering, so a
+   utility class like text-white on a specific button still overrides this
+   default — an unlayered rule here would always win regardless of
+   specificity and silently defeat every text-*  color utility on inputs/
+   buttons app-wide. */
+@layer base {
+  input,
+  select,
+  textarea,
+  button {
+    color: #000000;
+  }
 }
 
 /* Bill printing — show only the bill pages, one invoice page per sheet */

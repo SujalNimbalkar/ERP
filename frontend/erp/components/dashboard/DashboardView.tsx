@@ -34,15 +34,49 @@ const cell = "border border-black/40 px-2 py-1 text-xs";
 const cellRight = `${cell} text-right whitespace-nowrap`;
 const headCell = "border border-black px-2 py-1 text-xs font-semibold text-left";
 
-/** Monochrome inline bar — width as % of the section's max value. */
-function Bar({ value, max, negative }: { value: number; max: number; negative?: boolean }) {
-  if (max <= 0) return null;
+/**
+ * Fixed hue assignment (validated categorical palette, see the dataviz
+ * skill) — every color here means the same thing everywhere it appears
+ * (KPI tile accent, table header dot, bar fill). Revenue is the brand
+ * anchor (blue); the five cost categories each get their own hue so a
+ * reader can match a bar or header dot to its meaning at a glance without
+ * re-reading the label. Profit/Loss uses the reserved status pair
+ * (green/red), never the categorical green/red, so it never impersonates
+ * a cost category.
+ */
+const COLOR = {
+  revenue: "#2a78d6",
+  diesel: "#eb6834",
+  toll: "#1baf7a",
+  maintenance: "#eda100",
+  salary: "#4a3aa7",
+  driverExpense: "#e87ba4",
+  good: "#006300",
+  critical: "#d03b3b",
+} as const;
+
+/** Small identity dot for a table header — pairs a column with its color
+ * everywhere else that color appears (bar fill, KPI accent). */
+function ColorDot({ color }: { color: string }) {
+  return (
+    <span
+      aria-hidden
+      className="mr-1.5 inline-block h-2 w-2 rounded-full align-middle"
+      style={{ backgroundColor: color }}
+    />
+  );
+}
+
+/** Inline bar — width as % of the section's max value. 4px rounded data-end
+ * (grows from the left baseline), square at the baseline, per mark spec. */
+function Bar({ value, max, color }: { value: number; max: number; color: string }) {
+  if (max <= 0 || value === 0) return null;
   const width = Math.min(100, Math.round((Math.abs(value) / max) * 100));
   return (
     <span
       aria-hidden
-      className={`ml-2 inline-block h-2 align-middle ${negative ? "bg-black/30" : "bg-black"}`}
-      style={{ width: `${Math.max(width, 2)}%`, maxWidth: "60px" }}
+      className="ml-2 inline-block h-2 rounded-r-full align-middle"
+      style={{ width: `${Math.max(width, 3)}%`, maxWidth: "60px", backgroundColor: color }}
     />
   );
 }
@@ -124,17 +158,25 @@ export function DashboardView() {
   const maxVehicleEarning = Math.max(0, ...vehicles.map((v) => v.earnings));
   const maxMonthRevenue = Math.max(0, ...months.map((m) => m.revenue));
 
-  const kpis = [
-    { label: "Revenue", value: `Rs ${money(totals.revenue)}` },
-    { label: "Expenses", value: `Rs ${money(totals.expenses)}` },
+  const profitColor = totals.profit < 0 ? COLOR.critical : COLOR.good;
+  const kpis: {
+    label: string;
+    value: string;
+    accent: string | null;
+    strong?: boolean;
+    valueColor?: string;
+  }[] = [
+    { label: "Revenue", value: `Rs ${money(totals.revenue)}`, accent: COLOR.revenue },
+    { label: "Expenses", value: `Rs ${money(totals.expenses)}`, accent: null },
     {
       label: totals.profit < 0 ? "Loss" : "Profit",
-      value: `Rs ${money(totals.profit)}`,
+      value: `${totals.profit < 0 ? "−" : ""}Rs ${money(Math.abs(totals.profit))}`,
       strong: true,
-      negative: totals.profit < 0,
+      accent: profitColor,
+      valueColor: profitColor,
     },
-    { label: "Trips", value: formatQty(totals.trips) },
-    { label: "Weight (kg)", value: formatQty(totals.totalWt) },
+    { label: "Trips", value: formatQty(totals.trips), accent: null },
+    { label: "Weight (kg)", value: formatQty(totals.totalWt), accent: null },
   ];
 
   return (
@@ -217,17 +259,25 @@ export function DashboardView() {
         </p>
       )}
 
-      <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-5">
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-5">
         {kpis.map((kpi) => (
-          <div key={kpi.label} className="border border-black px-2.5 py-2">
-            <p className="text-xs font-medium text-black">{kpi.label}</p>
+          <div
+            key={kpi.label}
+            className="border border-black bg-white px-3 py-2.5"
+            style={
+              kpi.accent
+                ? { borderTop: `3px solid ${kpi.accent}`, backgroundColor: `${kpi.accent}0d` }
+                : undefined
+            }
+          >
+            <p className="text-xs font-medium uppercase tracking-wide text-black/60">
+              {kpi.label}
+            </p>
             <p
-              className={`text-sm sm:text-base ${kpi.strong ? "font-semibold" : ""} ${
-                kpi.negative ? "underline" : ""
-              } text-black`}
+              className={`mt-0.5 text-lg sm:text-xl ${kpi.strong ? "font-bold" : "font-semibold"}`}
+              style={kpi.valueColor ? { color: kpi.valueColor } : { color: "#0b0b0b" }}
             >
-              {kpi.negative ? "−" : ""}
-              {kpi.value.replace("-", "")}
+              {kpi.value}
             </p>
           </div>
         ))}
@@ -235,7 +285,10 @@ export function DashboardView() {
 
       <section className="mb-6">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-base font-semibold text-black">
+          <h3
+            className="border-l-[3px] pl-2 text-base font-semibold text-black"
+            style={{ borderColor: COLOR.revenue }}
+          >
             Vehicles — earnings vs expenses
           </h3>
           <button
@@ -259,10 +312,10 @@ export function DashboardView() {
                 <th className={headCell}>Vehicle</th>
                 <th className={headCell}>Trips</th>
                 <th className={headCell}>Weight (kg)</th>
-                <th className={headCell}>Earnings</th>
-                <th className={headCell}>Diesel</th>
-                <th className={headCell}>Maintenance</th>
-                <th className={headCell}>Toll</th>
+                <th className={headCell}><ColorDot color={COLOR.revenue} />Earnings</th>
+                <th className={headCell}><ColorDot color={COLOR.diesel} />Diesel</th>
+                <th className={headCell}><ColorDot color={COLOR.maintenance} />Maintenance</th>
+                <th className={headCell}><ColorDot color={COLOR.toll} />Toll</th>
                 <th className={headCell}>Profit</th>
               </tr>
             </thead>
@@ -277,12 +330,15 @@ export function DashboardView() {
                     <td className={cellRight}>{formatQty(v.totalWt)}</td>
                     <td className={cellRight}>
                       {money(v.earnings)}
-                      <Bar value={v.earnings} max={maxVehicleEarning} />
+                      <Bar value={v.earnings} max={maxVehicleEarning} color={COLOR.revenue} />
                     </td>
                     <td className={cellRight}>{money(v.dieselCost)}</td>
                     <td className={cellRight}>{money(v.maintenanceCost)}</td>
                     <td className={cellRight}>{money(v.toll)}</td>
-                    <td className={`${cellRight} font-semibold`}>
+                    <td
+                      className={`${cellRight} font-semibold`}
+                      style={{ color: v.profit < 0 ? COLOR.critical : COLOR.good }}
+                    >
                       {v.profit < 0 ? `−${money(Math.abs(v.profit))}` : money(v.profit)}
                     </td>
                   </tr>
@@ -295,7 +351,10 @@ export function DashboardView() {
 
       <section className="mb-6">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-base font-semibold text-black">
+          <h3
+            className="border-l-[3px] pl-2 text-base font-semibold text-black"
+            style={{ borderColor: COLOR.salary }}
+          >
             Drivers — trips & costs
           </h3>
           <button
@@ -319,9 +378,9 @@ export function DashboardView() {
                 <th className={headCell}>Driver</th>
                 <th className={headCell}>Trips</th>
                 <th className={headCell}>Weight (kg)</th>
-                <th className={headCell}>Earnings Hauled</th>
-                <th className={headCell}>Salary Paid</th>
-                <th className={headCell}>Daily Expenses</th>
+                <th className={headCell}><ColorDot color={COLOR.revenue} />Earnings Hauled</th>
+                <th className={headCell}><ColorDot color={COLOR.salary} />Salary Paid</th>
+                <th className={headCell}><ColorDot color={COLOR.driverExpense} />Daily Expenses</th>
                 <th className={headCell}>Total Cost</th>
               </tr>
             </thead>
@@ -360,7 +419,10 @@ export function DashboardView() {
 
       <section className="mb-6">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-base font-semibold text-black">
+          <h3
+            className="border-l-[3px] pl-2 text-base font-semibold text-black"
+            style={{ borderColor: COLOR.salary }}
+          >
             Staff Payroll — accountants, hamals & other staff
           </h3>
           <button
@@ -383,8 +445,8 @@ export function DashboardView() {
               <tr>
                 <th className={headCell}>Name</th>
                 <th className={headCell}>Role</th>
-                <th className={headCell}>Salary Paid</th>
-                <th className={headCell}>Daily Expenses</th>
+                <th className={headCell}><ColorDot color={COLOR.salary} />Salary Paid</th>
+                <th className={headCell}><ColorDot color={COLOR.driverExpense} />Daily Expenses</th>
                 <th className={headCell}>Total Cost</th>
               </tr>
             </thead>
@@ -421,7 +483,10 @@ export function DashboardView() {
 
       <section className="mb-6">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-base font-semibold text-black">
+          <h3
+            className="border-l-[3px] pl-2 text-base font-semibold text-black"
+            style={{ borderColor: COLOR.revenue }}
+          >
             Monthly profit / loss
           </h3>
           <button
@@ -438,17 +503,26 @@ export function DashboardView() {
             Export CSV
           </button>
         </div>
+        <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-black/70">
+          <span><ColorDot color={COLOR.revenue} />Revenue</span>
+          <span><ColorDot color={COLOR.diesel} />Diesel</span>
+          <span><ColorDot color={COLOR.toll} />Toll</span>
+          <span><ColorDot color={COLOR.maintenance} />Maintenance</span>
+          <span><ColorDot color={COLOR.salary} />Salary</span>
+          <span><ColorDot color={COLOR.driverExpense} />Driver Expenses</span>
+          <span><ColorDot color={COLOR.good} />Profit <span className="text-black/40">/</span> <ColorDot color={COLOR.critical} />Loss</span>
+        </div>
         <div className="overflow-x-auto border border-black">
           <table className="w-full border-collapse text-black">
             <thead>
               <tr>
                 <th className={headCell}>Month</th>
-                <th className={headCell}>Revenue</th>
-                <th className={headCell}>Diesel</th>
-                <th className={headCell}>Toll</th>
-                <th className={headCell}>Maintenance</th>
-                <th className={headCell}>Salary</th>
-                <th className={headCell}>Driver Exp.</th>
+                <th className={headCell}><ColorDot color={COLOR.revenue} />Revenue</th>
+                <th className={headCell}><ColorDot color={COLOR.diesel} />Diesel</th>
+                <th className={headCell}><ColorDot color={COLOR.toll} />Toll</th>
+                <th className={headCell}><ColorDot color={COLOR.maintenance} />Maintenance</th>
+                <th className={headCell}><ColorDot color={COLOR.salary} />Salary</th>
+                <th className={headCell}><ColorDot color={COLOR.driverExpense} />Driver Exp.</th>
                 <th className={headCell}>Profit</th>
               </tr>
             </thead>
@@ -467,16 +541,23 @@ export function DashboardView() {
                   </td>
                   <td className={cellRight}>
                     {money(m.revenue)}
-                    <Bar value={m.revenue} max={maxMonthRevenue} />
+                    <Bar value={m.revenue} max={maxMonthRevenue} color={COLOR.revenue} />
                   </td>
                   <td className={cellRight}>{money(m.diesel)}</td>
                   <td className={cellRight}>{money(m.toll)}</td>
                   <td className={cellRight}>{money(m.maintenance)}</td>
                   <td className={cellRight}>{money(m.salary)}</td>
                   <td className={cellRight}>{money(m.driverExpenses)}</td>
-                  <td className={`${cellRight} font-semibold`}>
+                  <td
+                    className={`${cellRight} font-semibold`}
+                    style={{ color: m.profit < 0 ? COLOR.critical : COLOR.good }}
+                  >
                     {m.profit < 0 ? `−${money(Math.abs(m.profit))}` : money(m.profit)}
-                    <Bar value={m.profit} max={maxMonthRevenue} negative={m.profit < 0} />
+                    <Bar
+                      value={m.profit}
+                      max={maxMonthRevenue}
+                      color={m.profit < 0 ? COLOR.critical : COLOR.good}
+                    />
                   </td>
                 </tr>
               ))}
@@ -488,7 +569,10 @@ export function DashboardView() {
                 <td className={cellRight}>{money(totals.maintenance)}</td>
                 <td className={cellRight}>{money(totals.salary)}</td>
                 <td className={cellRight}>{money(totals.driverExpenses)}</td>
-                <td className={cellRight}>
+                <td
+                  className={cellRight}
+                  style={{ color: totals.profit < 0 ? COLOR.critical : COLOR.good }}
+                >
                   {totals.profit < 0
                     ? `−${money(Math.abs(totals.profit))}`
                     : money(totals.profit)}

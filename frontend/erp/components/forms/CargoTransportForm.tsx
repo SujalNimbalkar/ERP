@@ -1088,7 +1088,7 @@ export function CargoTransportForm() {
           </FormSection>
         )}
 
-        <div className="border-2 border-amber-500 p-1.5">
+        <div className="p-1.5">
           <FormSection
             title="4. Diesel Tank Fill"
             description="Check this if the vehicle's tank was filled on this trip — save it here first so its ref is ready to pick in Trip Expenses below."
@@ -1194,7 +1194,7 @@ export function CargoTransportForm() {
           </FormSection>
         )}
 
-        <div className="space-y-3 border-2 border-blue-500 p-1.5">
+        <div className="space-y-3 p-1.5">
           <FormSection
             title="6. Vehicle Maintenance"
             description="Check this if maintenance was done on this trip — it creates a Vehicle Maintenance record linked to this vehicle and date."
@@ -1231,13 +1231,15 @@ export function CargoTransportForm() {
 
         <StatusMessage type={status} message={message} />
 
-        <button
-          type="submit"
-          disabled={submitting}
-          className="border border-black bg-white px-5 py-2.5 text-sm font-medium text-black disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {submitting ? "Saving…" : "Save Trip"}
-        </button>
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={submitting}
+            className="border border-black bg-black px-5 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {submitting ? "Saving…" : "Save Trip"}
+          </button>
+        </div>
       </form>
 
       <ConfirmDialog
