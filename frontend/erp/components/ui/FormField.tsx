@@ -13,7 +13,7 @@ interface FormFieldProps {
 }
 
 const inputClass =
-  "w-full border border-black bg-white px-2.5 py-1.5 text-sm text-black outline-none focus:border-black";
+  "w-full rounded-md border border-black/15 bg-white px-2.5 py-1.5 text-sm text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30";
 
 function normalizedOptions(field: FieldConfig): { value: string; label: string }[] {
   return (field.options ?? []).map((opt) =>
@@ -33,7 +33,7 @@ export function FormField({ field, value, onChange, id: idOverride }: FormFieldP
           type="checkbox"
           checked={safeValue === "true"}
           onChange={(e) => onChange(field.name, e.target.checked ? "true" : "false")}
-          className="h-4 w-4 border border-black"
+          className="h-4 w-4 rounded-sm border border-black/25 accent-brand"
         />
         <label htmlFor={id} className="text-xs font-medium text-black">
           {field.label}
@@ -46,7 +46,7 @@ export function FormField({ field, value, onChange, id: idOverride }: FormFieldP
     <div className="flex flex-col gap-0.5">
       <label htmlFor={id} className="text-xs font-medium text-black">
         {field.label}
-        {field.required && <span> *</span>}
+        {field.required && <span className="text-brand-text"> *</span>}
       </label>
 
       {field.type === "select" ? (

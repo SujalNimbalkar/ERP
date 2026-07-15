@@ -377,14 +377,16 @@ export function RecordsView() {
         </p>
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-2 border-b border-black pb-3">
+      <div className="mb-4 flex flex-wrap gap-1 rounded-lg border border-black/10 bg-white p-1 shadow-sm">
         {RECORD_VIEWS.map((view) => (
           <button
             key={view.id}
             type="button"
             onClick={() => switchTab(view.id)}
-            className={`px-3 py-1.5 text-sm text-black ${
-              activeViewId === view.id ? "font-semibold underline" : "font-normal"
+            className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+              activeViewId === view.id
+                ? "bg-brand-tint font-semibold text-brand-text"
+                : "font-normal text-black hover:bg-black/5"
             }`}
           >
             {view.label} ({filterRecordsForView(records, view).length})
@@ -393,8 +395,10 @@ export function RecordsView() {
         <button
           type="button"
           onClick={() => switchTab(AUDIT_TAB)}
-          className={`px-3 py-1.5 text-sm text-black ${
-            isAuditTab ? "font-semibold underline" : "font-normal"
+          className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+            isAuditTab
+              ? "bg-brand-tint font-semibold text-brand-text"
+              : "font-normal text-black hover:bg-black/5"
           }`}
         >
           Audit Log ({auditLog.length})
@@ -408,10 +412,10 @@ export function RecordsView() {
             value={auditSearch}
             onChange={(e) => setAuditSearch(e.target.value)}
             placeholder="Search by action, record type, invoice no…"
-            className="mb-4 w-full border border-black bg-white px-3 py-2 text-sm text-black outline-none"
+            className="mb-4 w-full rounded-md border border-black/15 bg-white px-3 py-2 text-sm text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30"
           />
           {filteredAudit.length === 0 ? (
-            <p className="border border-black px-4 py-6 text-sm text-black">
+            <p className="rounded-lg border border-black/10 bg-white px-4 py-6 text-sm text-black shadow-sm">
               {auditSearch
                 ? `No audit entries matching "${auditSearch}".`
                 : auditSource === "loading"
@@ -419,14 +423,14 @@ export function RecordsView() {
                   : "No audit entries yet. Save, edit or delete a record to see entries here."}
             </p>
           ) : (
-            <div className="overflow-x-auto border border-black">
+            <div className="overflow-x-auto rounded-lg border border-black/10 shadow-sm">
               <table className="w-full border-collapse text-left text-sm text-black">
                 <thead>
-                  <tr className="border-b border-black bg-white">
-                    <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 text-xs font-semibold">Timestamp</th>
-                    <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 text-xs font-semibold">Action</th>
-                    <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 text-xs font-semibold">Record Type</th>
-                    <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 text-xs font-semibold">Record ID</th>
+                  <tr className="border-b border-black/10 bg-page">
+                    <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 text-xs font-semibold">Timestamp</th>
+                    <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 text-xs font-semibold">Action</th>
+                    <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 text-xs font-semibold">Record Type</th>
+                    <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 text-xs font-semibold">Record ID</th>
                     <th className="px-3 py-2 text-xs font-semibold">Detail</th>
                   </tr>
                 </thead>
@@ -441,20 +445,20 @@ export function RecordsView() {
                           )
                         : [];
                     return (
-                      <tr key={entry.id} className="border-b border-black/20 hover:bg-black/5">
-                        <td className="whitespace-nowrap border-r border-black/20 px-3 py-2 text-xs">
+                      <tr key={entry.id} className="border-b border-black/10 hover:bg-black/5">
+                        <td className="whitespace-nowrap border-r border-black/10 px-3 py-2 text-xs">
                           {new Date(entry.timestamp).toLocaleString("en-IN", {
                             day: "2-digit", month: "short", year: "numeric",
                             hour: "2-digit", minute: "2-digit",
                           })}
                         </td>
-                        <td className="whitespace-nowrap border-r border-black/20 px-3 py-2 text-xs font-semibold">
+                        <td className="whitespace-nowrap border-r border-black/10 px-3 py-2 text-xs font-semibold">
                           {entry.action.toUpperCase()}
                         </td>
-                        <td className="whitespace-nowrap border-r border-black/20 px-3 py-2 text-xs">
+                        <td className="whitespace-nowrap border-r border-black/10 px-3 py-2 text-xs">
                           {entry.recordType}
                         </td>
-                        <td className="whitespace-nowrap border-r border-black/20 px-3 py-2 font-mono text-xs">
+                        <td className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-mono text-xs">
                           {entry.recordId.slice(0, 8)}…
                         </td>
                         <td className="px-3 py-2 text-xs">
@@ -505,20 +509,20 @@ export function RecordsView() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search invoice, vehicle, material, code…"
-              className="min-w-55 flex-1 border border-black bg-white px-3 py-2 text-sm text-black outline-none"
+              className="min-w-55 flex-1 rounded-md border border-black/15 bg-white px-3 py-2 text-sm text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30"
             />
             <button
               type="button"
               onClick={handleExportCsv}
               disabled={filteredRecords.length === 0}
-              className="border border-black px-4 py-2 text-sm text-black disabled:opacity-50"
+              className="rounded-md border border-black/15 px-4 py-2 text-sm text-black transition-colors hover:bg-black/5 disabled:opacity-50"
             >
               Export CSV
             </button>
             <button
               type="button"
               onClick={refresh}
-              className="border border-black px-4 py-2 text-sm text-black"
+              className="rounded-md border border-black/15 px-4 py-2 text-sm text-black transition-colors hover:bg-black/5"
             >
               Refresh
             </button>
@@ -527,7 +531,7 @@ export function RecordsView() {
                 type="button"
                 onClick={retryAllPending}
                 disabled={bulkRetrying}
-                className="border border-black bg-white px-4 py-2 text-sm font-medium text-black disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {bulkRetrying ? "Syncing…" : `Sync Pending (${pendingRecords.length})`}
               </button>
@@ -543,7 +547,7 @@ export function RecordsView() {
                     type="date"
                     value={dateFrom}
                     onChange={(e) => setDateFrom(e.target.value)}
-                    className="border border-black bg-white px-2 py-1.5 text-sm text-black outline-none"
+                    className="rounded-md border border-black/15 bg-white px-2 py-1.5 text-sm text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30"
                   />
                 </label>
                 <label className="flex flex-col gap-0.5 text-xs text-black">
@@ -552,7 +556,7 @@ export function RecordsView() {
                     type="date"
                     value={dateTo}
                     onChange={(e) => setDateTo(e.target.value)}
-                    className="border border-black bg-white px-2 py-1.5 text-sm text-black outline-none"
+                    className="rounded-md border border-black/15 bg-white px-2 py-1.5 text-sm text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30"
                   />
                 </label>
               </>
@@ -563,7 +567,7 @@ export function RecordsView() {
                 <select
                   value={vehicleFilter}
                   onChange={(e) => setVehicleFilter(e.target.value)}
-                  className="border border-black bg-white px-2 py-1.5 text-sm text-black outline-none"
+                  className="rounded-md border border-black/15 bg-white px-2 py-1.5 text-sm text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30"
                 >
                   <option value="">All vehicles</option>
                   {vehicleOptions.map((v) => (
@@ -578,7 +582,7 @@ export function RecordsView() {
                 <select
                   value={driverFilter}
                   onChange={(e) => setDriverFilter(e.target.value)}
-                  className="border border-black bg-white px-2 py-1.5 text-sm text-black outline-none"
+                  className="rounded-md border border-black/15 bg-white px-2 py-1.5 text-sm text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30"
                 >
                   <option value="">All drivers</option>
                   {driverOptions.map((d) => (
@@ -593,7 +597,7 @@ export function RecordsView() {
                 <select
                   value={syncFilter}
                   onChange={(e) => setSyncFilter(e.target.value as typeof syncFilter)}
-                  className="border border-black bg-white px-2 py-1.5 text-sm text-black outline-none"
+                  className="rounded-md border border-black/15 bg-white px-2 py-1.5 text-sm text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30"
                 >
                   <option value="all">All</option>
                   <option value="synced">Synced</option>
@@ -606,7 +610,7 @@ export function RecordsView() {
               <select
                 value={dateSort}
                 onChange={(e) => setDateSort(e.target.value as typeof dateSort)}
-                className="border border-black bg-white px-2 py-1.5 text-sm text-black outline-none"
+                className="rounded-md border border-black/15 bg-white px-2 py-1.5 text-sm text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30"
               >
                 <option value="newest">Newest first</option>
                 <option value="oldest">Oldest first</option>
@@ -619,7 +623,7 @@ export function RecordsView() {
                 onChange={(e) =>
                   setPageSize(e.target.value === "all" ? "all" : Number(e.target.value))
                 }
-                className="border border-black bg-white px-2 py-1.5 text-sm text-black outline-none"
+                className="rounded-md border border-black/15 bg-white px-2 py-1.5 text-sm text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30"
               >
                 {PAGE_SIZES.map((size) => (
                   <option key={size} value={size}>
@@ -632,7 +636,7 @@ export function RecordsView() {
               <button
                 type="button"
                 onClick={clearFilters}
-                className="px-2 py-1.5 text-xs text-black underline"
+                className="px-2 py-1.5 text-xs text-brand-text underline"
               >
                 Clear filters
               </button>
@@ -640,7 +644,7 @@ export function RecordsView() {
           </div>
 
           {editing && (
-            <div className="mb-4 border border-black p-4">
+            <div className="mb-4 rounded-lg border border-black/10 bg-white p-4 shadow-sm">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-black">
                   Editing — {recordSourceLabel(editing.record)} · saved{" "}
@@ -652,14 +656,14 @@ export function RecordsView() {
                   <button
                     type="button"
                     onClick={saveEdit}
-                    className="border border-black bg-white px-4 py-1.5 text-sm font-semibold text-black"
+                    className="rounded-md bg-brand px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-brand-hover"
                   >
                     Save
                   </button>
                   <button
                     type="button"
                     onClick={cancelEdit}
-                    className="border border-black px-4 py-1.5 text-sm text-black"
+                    className="rounded-md border border-black/15 px-4 py-1.5 text-sm text-black transition-colors hover:bg-black/5"
                   >
                     Cancel
                   </button>
@@ -688,7 +692,7 @@ export function RecordsView() {
                             : prev
                         )
                       }
-                      className="border border-black bg-white px-2 py-1 text-xs text-black outline-none"
+                      className="rounded-md border border-black/15 bg-white px-2 py-1 text-xs text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30"
                     />
                   </div>
                 ))}
@@ -697,24 +701,24 @@ export function RecordsView() {
           )}
 
           {filteredRecords.length === 0 ? (
-            <p className="border border-black px-4 py-6 text-sm text-black">
+            <p className="rounded-lg border border-black/10 bg-white px-4 py-6 text-sm text-black shadow-sm">
               No records for {activeView.label}
               {search ? ` matching "${search}"` : ""}
               {hasActiveFilters ? " matching the current filters" : ""}. Save entries from the
               form modules to see them here.
             </p>
           ) : (
-            <div className="overflow-x-auto border border-black">
+            <div className="overflow-x-auto rounded-lg border border-black/10 shadow-sm">
               <table className="w-full min-w-240 border-collapse text-left text-sm text-black">
                 <thead>
-                  <tr className="border-b border-black bg-white">
-                    <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 text-xs font-semibold">
+                  <tr className="border-b border-black/10 bg-page">
+                    <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 text-xs font-semibold">
                       Actions
                     </th>
                     {activeView.columns.map((col) => (
                       <th
                         key={col.key}
-                        className="whitespace-nowrap border-r border-black/30 px-3 py-2 text-xs font-semibold last:border-r-0"
+                        className="whitespace-nowrap border-r border-black/10 px-3 py-2 text-xs font-semibold last:border-r-0"
                       >
                         {col.label}
                       </th>
@@ -727,23 +731,23 @@ export function RecordsView() {
                     return (
                       <tr
                         key={record.id}
-                        className={`border-b border-black/20 ${
-                          isEditingThis ? "bg-black/5" : "hover:bg-black/5"
+                        className={`border-b border-black/10 ${
+                          isEditingThis ? "bg-brand-tint" : "hover:bg-black/5"
                         }`}
                       >
-                        <td className="whitespace-nowrap border-r border-black/20 px-3 py-2 text-xs">
+                        <td className="whitespace-nowrap border-r border-black/10 px-3 py-2 text-xs">
                           <div className="flex gap-2">
                             <button
                               type="button"
                               onClick={() => (isEditingThis ? cancelEdit() : startEdit(record))}
-                              className="text-black underline"
+                              className="text-brand-text underline"
                             >
                               {isEditingThis ? "Cancel" : "Edit"}
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDelete(record)}
-                              className="text-black underline"
+                              className="text-critical underline"
                             >
                               Delete
                             </button>
@@ -753,7 +757,7 @@ export function RecordsView() {
                                 onClick={() => retryOne(record)}
                                 disabled={retryingIds.has(record.id)}
                                 title="Sheet sync failed for this record — retry"
-                                className="text-black underline disabled:cursor-not-allowed disabled:opacity-50"
+                                className="text-critical underline disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 {retryingIds.has(record.id) ? "Syncing…" : "⚠ Retry Sync"}
                               </button>
@@ -765,7 +769,7 @@ export function RecordsView() {
                           return (
                             <td
                               key={`${record.id}-${col.key}`}
-                              className="max-w-55 truncate border-r border-black/20 px-3 py-2 text-xs last:border-r-0"
+                              className="max-w-55 truncate border-r border-black/10 px-3 py-2 text-xs last:border-r-0"
                               title={value || undefined}
                             >
                               {value || "—"}

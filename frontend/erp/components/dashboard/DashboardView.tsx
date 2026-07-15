@@ -37,22 +37,24 @@ const headCell = "border border-black px-2 py-1 text-xs font-semibold text-left"
 /**
  * Fixed hue assignment (validated categorical palette, see the dataviz
  * skill) — every color here means the same thing everywhere it appears
- * (KPI tile accent, table header dot, bar fill). Revenue is the brand
- * anchor (blue); the five cost categories each get their own hue so a
- * reader can match a bar or header dot to its meaning at a glance without
- * re-reading the label. Profit/Loss uses the reserved status pair
+ * (KPI tile accent, table header dot, bar fill), reading straight off the
+ * shared design tokens in globals.css so Dashboard and the forms never
+ * drift apart. Revenue is the brand anchor (the real company orange,
+ * sampled from the logo); the five cost categories each get their own hue
+ * so a reader can match a bar or header dot to its meaning at a glance
+ * without re-reading the label. Profit/Loss uses the reserved status pair
  * (green/red), never the categorical green/red, so it never impersonates
  * a cost category.
  */
 const COLOR = {
-  revenue: "#2a78d6",
-  diesel: "#eb6834",
+  revenue: "var(--color-brand)",
+  diesel: "var(--color-diesel)",
   toll: "#1baf7a",
-  maintenance: "#eda100",
+  maintenance: "var(--color-maintenance)",
   salary: "#4a3aa7",
   driverExpense: "#e87ba4",
-  good: "#006300",
-  critical: "#d03b3b",
+  good: "var(--color-good)",
+  critical: "var(--color-critical)",
 } as const;
 
 /** Small identity dot for a table header — pairs a column with its color

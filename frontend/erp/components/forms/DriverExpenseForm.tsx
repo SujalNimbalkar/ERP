@@ -143,7 +143,7 @@ export function DriverExpenseForm() {
           one entry per expense.
         </p>
         {payeeOptions.length === 0 && (
-          <p className="mt-2 border border-black px-3 py-2 text-xs text-black">
+          <p className="mt-2 rounded-md border border-black/10 bg-white px-3 py-2 text-xs text-black shadow-sm">
             No drivers or staff saved yet. Create driver details in Driver Master or add
             staff in Staff Master first.
           </p>
@@ -163,7 +163,7 @@ export function DriverExpenseForm() {
         </div>
 
         {selectedPayee && (
-          <p className="border border-black px-3 py-2 text-xs text-black">
+          <p className="rounded-md border-l-4 border-brand bg-brand-tint px-3 py-2 text-xs text-black">
             {selectedPayee.name} — expenses in {values.date.slice(0, 7)}:{" "}
             <span className="font-semibold">
               Rs {monthTotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
@@ -173,13 +173,15 @@ export function DriverExpenseForm() {
 
         <StatusMessage type={status} message={message} />
 
-        <button
-          type="submit"
-          disabled={submitting}
-          className="border border-black bg-white px-5 py-2.5 text-sm font-medium text-black disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {submitting ? "Saving…" : "Save Expense"}
-        </button>
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={submitting}
+            className="rounded-md bg-brand px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {submitting ? "Saving…" : "Save Expense"}
+          </button>
+        </div>
       </form>
 
       <ConfirmDialog

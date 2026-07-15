@@ -252,14 +252,14 @@ export function BillingModule() {
           <button
             type="button"
             onClick={() => setViewBill(null)}
-            className="border border-black bg-white px-4 py-2 text-sm font-medium text-black"
+            className="rounded-md border border-black/15 bg-white px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-black/5"
           >
             ← Back to Billing
           </button>
           <button
             type="button"
             onClick={() => window.print()}
-            className="border border-black bg-white px-4 py-2 text-sm font-medium text-black"
+            className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-hover"
           >
             Print / Save PDF
           </button>
@@ -268,7 +268,7 @@ export function BillingModule() {
             {findCompany(viewBill.companyId)?.name}
           </p>
         </div>
-        <div className="border border-black">
+        <div className="rounded-lg border border-black/10 shadow-sm">
           <BillPreview bill={viewBill} />
         </div>
         {toast && <Toast message={toast.message} type={toast.type} onClose={dismissToast} />}
@@ -335,7 +335,7 @@ export function BillingModule() {
               required
               value={values.month}
               onChange={(e) => handleChange("month", e.target.value)}
-              className="w-full border border-black bg-white px-3 py-2 text-sm text-black outline-none focus:border-black"
+              className="w-full rounded-md border border-black/15 bg-white px-3 py-2 text-sm text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30"
             />
           </div>
         </FormSection>
@@ -426,21 +426,21 @@ export function BillingModule() {
         </FormSection>
 
         <div className="flex flex-wrap items-center gap-3">
-          <div className="border border-black px-3 py-2 text-sm text-black">
+          <div className="rounded-md border border-black/10 bg-white px-3 py-2 text-sm text-black shadow-sm">
             <span className="font-medium">{lines.length}</span> trip lines ·{" "}
             <span className="font-medium">Rs {formatMoney(totals.grandTotal)}</span> incl. GST
           </div>
           <button
             type="button"
             onClick={() => window.print()}
-            className="border border-black bg-white px-5 py-2.5 text-sm font-medium text-black"
+            className="rounded-md border border-black/15 bg-white px-5 py-2.5 text-sm font-medium text-black transition-colors hover:bg-black/5"
           >
             Print / Save PDF
           </button>
           <button
             type="button"
             onClick={handleSave}
-            className="border border-black bg-white px-5 py-2.5 text-sm font-semibold text-black"
+            className="rounded-md bg-brand px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-hover"
           >
             Save Bill
           </button>
@@ -449,8 +449,8 @@ export function BillingModule() {
         <StatusMessage type={status === "error" ? "error" : "idle"} message={message} />
       </div>
 
-      <div className="mt-6 border border-black">
-        <p className="border-b border-black px-3 py-2 text-sm font-semibold text-black print:hidden">
+      <div className="mt-6 rounded-lg border border-black/10 shadow-sm">
+        <p className="rounded-t-lg border-b border-black/10 bg-page px-3 py-2 text-sm font-semibold text-black print:hidden">
           Bill Preview — {formatMonthLabel(values.month)}
         </p>
         <BillPreview bill={draft} />
@@ -459,60 +459,62 @@ export function BillingModule() {
       <div className="mt-8 print:hidden">
         <h3 className="mb-2 text-base font-semibold text-black">Saved Bills</h3>
         {savedBills.length === 0 ? (
-          <p className="border border-black px-3 py-2 text-sm text-black">
+          <p className="rounded-md border border-black/10 bg-white px-3 py-2 text-sm text-black shadow-sm">
             No bills saved yet. Generate a preview above and press Save Bill.
           </p>
         ) : (
-          <table className="w-full border-collapse text-sm text-black">
-            <thead>
-              <tr>
-                {["Invoice No", "Company", "Plant", "Category", "Month", "Amount (incl. GST)", ""].map(
-                  (label) => (
-                    <th key={label} className="border border-black px-2 py-1 text-left">
-                      {label}
-                    </th>
-                  )
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {savedBills.map((bill) => (
-                <tr key={bill.id}>
-                  <td className="border border-black px-2 py-1">{bill.invoiceNo}</td>
-                  <td className="border border-black px-2 py-1">
-                    {findCompany(bill.companyId)?.name ?? bill.companyId}
-                  </td>
-                  <td className="border border-black px-2 py-1">{bill.plantLabel}</td>
-                  <td className="border border-black px-2 py-1">
-                    {BILL_CATEGORIES.find((c) => c.id === bill.categoryId)?.label ??
-                      bill.categoryId}
-                  </td>
-                  <td className="border border-black px-2 py-1">
-                    {formatMonthLabel(bill.month)}
-                  </td>
-                  <td className="border border-black px-2 py-1 text-right">
-                    {formatMoney(bill.totals.grandTotal)}
-                  </td>
-                  <td className="border border-black px-2 py-1">
-                    <button
-                      type="button"
-                      onClick={() => setViewBill(bill)}
-                      className="mr-3 underline"
-                    >
-                      View / Print
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(bill)}
-                      className="underline"
-                    >
-                      Delete
-                    </button>
-                  </td>
+          <div className="overflow-x-auto rounded-lg border border-black/10 shadow-sm">
+            <table className="w-full border-collapse text-sm text-black">
+              <thead>
+                <tr className="bg-page">
+                  {["Invoice No", "Company", "Plant", "Category", "Month", "Amount (incl. GST)", ""].map(
+                    (label) => (
+                      <th key={label} className="border-b border-black/10 px-2 py-2 text-left font-semibold">
+                        {label}
+                      </th>
+                    )
+                  )}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {savedBills.map((bill) => (
+                  <tr key={bill.id} className="border-b border-black/10 last:border-b-0 hover:bg-black/5">
+                    <td className="px-2 py-2">{bill.invoiceNo}</td>
+                    <td className="px-2 py-2">
+                      {findCompany(bill.companyId)?.name ?? bill.companyId}
+                    </td>
+                    <td className="px-2 py-2">{bill.plantLabel}</td>
+                    <td className="px-2 py-2">
+                      {BILL_CATEGORIES.find((c) => c.id === bill.categoryId)?.label ??
+                        bill.categoryId}
+                    </td>
+                    <td className="px-2 py-2">
+                      {formatMonthLabel(bill.month)}
+                    </td>
+                    <td className="px-2 py-2 text-right">
+                      {formatMoney(bill.totals.grandTotal)}
+                    </td>
+                    <td className="px-2 py-2">
+                      <button
+                        type="button"
+                        onClick={() => setViewBill(bill)}
+                        className="mr-3 text-brand-text underline"
+                      >
+                        View / Print
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(bill)}
+                        className="text-critical underline"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 

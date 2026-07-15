@@ -90,26 +90,31 @@ export function AppShell({ cloudSync }: { cloudSync: boolean }) {
   const blocked = sheetLoad === "loading" || sheetLoad === "error";
 
   return (
-    <div className="flex min-h-full flex-1 flex-col bg-white text-black md:flex-row">
-      <aside className="flex w-full shrink-0 flex-col border-b border-black bg-white md:w-56 md:border-b-0 md:border-r">
-        <div className="border-b border-black px-4 py-2.5 md:py-5">
+    <div className="flex min-h-full flex-1 flex-col bg-page text-black md:flex-row">
+      <aside className="flex w-full shrink-0 flex-col border-b border-black/10 bg-white shadow-sm md:w-56 md:border-b-0 md:border-r">
+        <div className="border-b border-black/10 px-4 py-2.5 md:py-5">
           <h1 className="text-base font-semibold text-black">Sahyadri ERP</h1>
-          <p className="mt-0.5 hidden text-xs text-black md:block">Transport & Logistics</p>
+          <p className="mt-0.5 hidden text-xs text-black/60 md:block">Transport & Logistics</p>
         </div>
 
         <nav className="flex flex-row overflow-x-auto p-1.5 md:flex-1 md:flex-col md:p-2">
-          {MODULES.map((mod) => (
-            <button
-              key={mod.id}
-              type="button"
-              onClick={() => setActiveModule(mod.id)}
-              className={`shrink-0 whitespace-nowrap px-3 py-2 text-left text-sm text-black md:mb-0.5 md:w-full ${
-                activeModule === mod.id ? "font-semibold underline" : "font-normal"
-              }`}
-            >
-              {mod.label}
-            </button>
-          ))}
+          {MODULES.map((mod) => {
+            const active = activeModule === mod.id;
+            return (
+              <button
+                key={mod.id}
+                type="button"
+                onClick={() => setActiveModule(mod.id)}
+                className={`shrink-0 whitespace-nowrap rounded-md px-3 py-2 text-left text-sm transition-colors md:mb-0.5 md:w-full ${
+                  active
+                    ? "border-l-[3px] border-brand bg-brand-tint pl-2.5 font-semibold text-brand-text md:border-l-[3px]"
+                    : "font-normal text-black hover:bg-black/5"
+                }`}
+              >
+                {mod.label}
+              </button>
+            );
+          })}
         </nav>
 
         <div className="hidden md:block">
@@ -117,23 +122,23 @@ export function AppShell({ cloudSync }: { cloudSync: boolean }) {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto bg-white p-3 sm:p-5 md:p-8">
+      <main className="flex-1 overflow-y-auto bg-page p-3 sm:p-5 md:p-8">
         {sheetLoad === "loading" && (
-          <div className="border border-black px-6 py-10 text-center">
+          <div className="rounded-lg border border-black/10 bg-white px-6 py-10 text-center shadow-sm">
             <p className="text-base font-semibold text-black">
               Loading data from Google Sheets…
             </p>
-            <p className="mt-2 text-sm text-black">
+            <p className="mt-2 text-sm text-black/60">
               All data comes from the spreadsheet — one moment.
             </p>
           </div>
         )}
         {sheetLoad === "error" && (
-          <div className="border border-black px-6 py-10 text-center">
+          <div className="rounded-lg border-l-4 border-critical bg-white px-6 py-10 text-center shadow-sm">
             <p className="text-base font-semibold text-black">
               Couldn&apos;t load data from Google Sheets
             </p>
-            <p className="mt-2 text-sm text-black">{sheetMessage}</p>
+            <p className="mt-2 text-sm text-black/60">{sheetMessage}</p>
             <div className="mt-4 flex justify-center gap-3">
               <button
                 type="button"
@@ -141,14 +146,14 @@ export function AppShell({ cloudSync }: { cloudSync: boolean }) {
                   setSheetLoad("loading");
                   setFetchAttempt((n) => n + 1);
                 }}
-                className="border border-black bg-white px-5 py-2.5 text-sm font-semibold text-black"
+                className="rounded-md bg-brand px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-hover"
               >
                 Retry
               </button>
               <button
                 type="button"
                 onClick={() => setSheetLoad("done")}
-                className="border border-black bg-white px-5 py-2.5 text-sm text-black"
+                className="rounded-md border border-black/15 bg-white px-5 py-2.5 text-sm text-black transition-colors hover:bg-black/5"
               >
                 Continue with last synced copy
               </button>
@@ -156,12 +161,12 @@ export function AppShell({ cloudSync }: { cloudSync: boolean }) {
           </div>
         )}
         {sheetLoad === "refreshing" && (
-          <p className="mb-4 border border-black px-4 py-2 text-sm text-black">
+          <p className="mb-4 rounded-md border-l-4 border-brand bg-brand-tint px-4 py-2 text-sm text-black">
             Syncing with Google Sheets…
           </p>
         )}
         {sheetLoad === "stale-error" && (
-          <p className="mb-4 border border-black px-4 py-2 text-sm text-black">
+          <p className="mb-4 rounded-md border-l-4 border-critical bg-critical-tint px-4 py-2 text-sm text-black">
             Couldn&apos;t refresh from Google Sheets — showing the last synced
             copy from {formatFetchTime(getLastSheetFetch())}.{" "}
             <button
@@ -170,31 +175,19 @@ export function AppShell({ cloudSync }: { cloudSync: boolean }) {
                 setSheetLoad("refreshing");
                 setFetchAttempt((n) => n + 1);
               }}
-              className="font-semibold underline"
+              className="font-semibold text-brand-text underline"
             >
               Retry
             </button>
           </p>
         )}
-        {sheetLoad === "done" && sheetMessage && (
-          <p className="mb-4 border border-black px-4 py-2 text-sm text-black">
-            {sheetMessage}{" "}
-            <button
-              type="button"
-              onClick={() => setSheetMessage("")}
-              className="font-semibold underline"
-            >
-              Dismiss
-            </button>
-          </p>
-        )}
         {!hasCloudSync() && activeModule !== "records" && (
-          <p className="mb-4 border border-black px-4 py-2 text-sm text-black">
+          <p className="mb-4 rounded-md border border-black/10 bg-white px-4 py-2 text-sm text-black shadow-sm">
             Data is saved in this browser only. Open{" "}
             <button
               type="button"
               onClick={() => setActiveModule("records")}
-              className="font-semibold underline"
+              className="font-semibold text-brand-text underline"
             >
               Saved Records
             </button>{" "}

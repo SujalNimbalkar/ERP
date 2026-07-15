@@ -130,7 +130,7 @@ export function DieselTankForm() {
           vehicle.
         </p>
         {lastFill && (
-          <p className="mt-2 border border-black px-3 py-2 text-xs text-black">
+          <p className="mt-2 rounded-md border-l-4 border-diesel bg-diesel/5 px-3 py-2 text-xs text-black">
             Last fill: <span className="font-semibold">{lastFill.fillRef}</span>
             {lastFill.fillAmount && ` · Rs ${lastFill.fillAmount}`}
             {" · "}
@@ -157,13 +157,15 @@ export function DieselTankForm() {
 
         <StatusMessage type={status} message={message} />
 
-        <button
-          type="submit"
-          disabled={submitting}
-          className="border border-black bg-white px-5 py-2.5 text-sm font-medium text-black disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {submitting ? "Saving…" : "Save Tank Fill"}
-        </button>
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={submitting}
+            className="rounded-md bg-brand px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {submitting ? "Saving…" : "Save Tank Fill"}
+          </button>
+        </div>
       </form>
 
       <ConfirmDialog

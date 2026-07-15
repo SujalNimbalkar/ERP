@@ -170,7 +170,7 @@ export function VehicleMaintenanceForm() {
               setFilterVehicleId(e.target.value);
               setMode("none");
             }}
-            className="border border-black bg-white px-3 py-2 text-sm text-black outline-none"
+            className="rounded-md border border-black/15 bg-white px-3 py-2 text-sm text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30"
           >
             <option value="">All Vehicles</option>
             {vehicleOptions.map((v) => (
@@ -181,19 +181,19 @@ export function VehicleMaintenanceForm() {
 
         {summary && (
           <div className="flex flex-wrap gap-3">
-            <div className="border border-black px-4 py-2 text-xs text-black">
+            <div className="rounded-md border border-black/10 bg-white px-4 py-2 text-xs text-black shadow-sm">
               <div className="font-semibold text-sm">{fmtCost(summary.total)}</div>
               <div className="text-black/60">Total spent</div>
             </div>
-            <div className="border border-black px-4 py-2 text-xs text-black">
+            <div className="rounded-md border border-black/10 bg-white px-4 py-2 text-xs text-black shadow-sm">
               <div className="font-semibold text-sm">{fmtCost(summary.thisYear)}</div>
               <div className="text-black/60">This year</div>
             </div>
-            <div className="border border-black px-4 py-2 text-xs text-black">
+            <div className="rounded-md border border-black/10 bg-white px-4 py-2 text-xs text-black shadow-sm">
               <div className="font-semibold text-sm">{fmtCost(summary.last30Days)}</div>
               <div className="text-black/60">Last 30 days</div>
             </div>
-            <div className="border border-black px-4 py-2 text-xs text-black">
+            <div className="rounded-md border border-black/10 bg-white px-4 py-2 text-xs text-black shadow-sm">
               <div className="font-semibold text-sm">{summary.count}</div>
               <div className="text-black/60">Records</div>
             </div>
@@ -206,7 +206,7 @@ export function VehicleMaintenanceForm() {
         <button
           type="button"
           onClick={startAdd}
-          className="mb-4 border border-black px-4 py-2 text-sm font-medium text-black"
+          className="mb-4 rounded-md bg-brand px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-hover"
         >
           + Add Maintenance Record
         </button>
@@ -214,7 +214,7 @@ export function VehicleMaintenanceForm() {
 
       {/* ── add / edit form ── */}
       {mode !== "none" && (
-        <form onSubmit={handleSubmit} className="mb-6 border border-black p-5 space-y-5">
+        <form onSubmit={handleSubmit} className="mb-6 space-y-5 rounded-lg border border-black/10 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-black">
               {mode === "edit"
@@ -224,14 +224,14 @@ export function VehicleMaintenanceForm() {
             <div className="flex gap-2">
               <button
                 type="submit"
-                className="border border-black bg-white px-5 py-1.5 text-sm font-semibold text-black"
+                className="rounded-md bg-brand px-5 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-brand-hover"
               >
                 {mode === "edit" ? "Update" : "Save"}
               </button>
               <button
                 type="button"
                 onClick={cancelForm}
-                className="border border-black px-4 py-1.5 text-sm text-black"
+                className="rounded-md border border-black/15 px-4 py-1.5 text-sm text-black transition-colors hover:bg-black/5"
               >
                 Cancel
               </button>
@@ -259,7 +259,7 @@ export function VehicleMaintenanceForm() {
 
       {/* ── history table ── */}
       {displayedRecords.length === 0 ? (
-        <p className="border border-black px-4 py-6 text-sm text-black">
+        <p className="rounded-lg border border-black/10 bg-white px-4 py-6 text-sm text-black shadow-sm">
           {vehicleOptions.length === 0
             ? "No vehicles registered. Add a vehicle in the Fleet tab first."
             : filterVehicleId
@@ -267,23 +267,23 @@ export function VehicleMaintenanceForm() {
             : "No maintenance records yet. Click + Add Maintenance Record above."}
         </p>
       ) : (
-        <div className="overflow-x-auto border border-black">
+        <div className="overflow-x-auto rounded-lg border border-black/10 shadow-sm">
           <table className="w-full border-collapse text-left text-xs text-black">
             <thead>
-              <tr className="border-b border-black bg-white">
-                <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 font-semibold">Action</th>
-                <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 font-semibold">ID</th>
-                <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 font-semibold">Date</th>
-                <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 font-semibold">Vehicle</th>
-                <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 font-semibold">Type</th>
-                <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 font-semibold">Description</th>
-                <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 font-semibold">Part</th>
-                <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 font-semibold">Vendor</th>
-                <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 font-semibold">Labour (Rs)</th>
-                <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 font-semibold">Parts (Rs)</th>
-                <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 font-semibold">Total (Rs)</th>
-                <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 font-semibold">Odometer</th>
-                <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 font-semibold">Next Service</th>
+              <tr className="border-b border-black/10 bg-page">
+                <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">Action</th>
+                <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">ID</th>
+                <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">Date</th>
+                <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">Vehicle</th>
+                <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">Type</th>
+                <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">Description</th>
+                <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">Part</th>
+                <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">Vendor</th>
+                <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">Labour (Rs)</th>
+                <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">Parts (Rs)</th>
+                <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">Total (Rs)</th>
+                <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">Odometer</th>
+                <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">Next Service</th>
                 <th className="whitespace-nowrap px-3 py-2 font-semibold">Invoice</th>
               </tr>
             </thead>
@@ -293,38 +293,38 @@ export function VehicleMaintenanceForm() {
                 return (
                 <tr
                   key={m.id}
-                  className={`border-b border-black/20 ${isEditingThis ? "bg-black/5" : "hover:bg-black/5"}`}
+                  className={`border-b border-black/10 ${isEditingThis ? "bg-black/5" : "hover:bg-black/5"}`}
                 >
-                  <td className="whitespace-nowrap border-r border-black/20 px-3 py-2">
+                  <td className="whitespace-nowrap border-r border-black/10 px-3 py-2">
                     <div className="flex gap-2">
                       <button
                         type="button"
                         onClick={() => isEditingThis ? cancelForm() : startEdit(m)}
-                        className="text-black underline"
+                        className="text-brand-text underline"
                       >
                         {isEditingThis ? "Cancel" : "Edit"}
                       </button>
                       <button
                         type="button"
                         onClick={() => handleDelete(m)}
-                        className="text-black underline"
+                        className="text-critical underline"
                       >
                         Delete
                       </button>
                     </div>
                   </td>
-                  <td className="whitespace-nowrap border-r border-black/20 px-3 py-2 font-mono">{m.id}</td>
-                  <td className="whitespace-nowrap border-r border-black/20 px-3 py-2">{fmtDate(m.date)}</td>
-                  <td className="whitespace-nowrap border-r border-black/20 px-3 py-2 font-semibold">{m.vehicleNo || m.vehicleId}</td>
-                  <td className="whitespace-nowrap border-r border-black/20 px-3 py-2">{m.maintenanceType || "—"}</td>
-                  <td className="max-w-48 truncate border-r border-black/20 px-3 py-2" title={m.description}>{m.description || "—"}</td>
-                  <td className="whitespace-nowrap border-r border-black/20 px-3 py-2">{m.partName || "—"}</td>
-                  <td className="whitespace-nowrap border-r border-black/20 px-3 py-2">{m.vendorName || "—"}</td>
-                  <td className="whitespace-nowrap border-r border-black/20 px-3 py-2 text-right">{m.labourCost || "—"}</td>
-                  <td className="whitespace-nowrap border-r border-black/20 px-3 py-2 text-right">{m.partsCost || "—"}</td>
-                  <td className="whitespace-nowrap border-r border-black/20 px-3 py-2 text-right font-semibold">{m.totalCost || "—"}</td>
-                  <td className="whitespace-nowrap border-r border-black/20 px-3 py-2">{m.odometerKm ? `${m.odometerKm} km` : "—"}</td>
-                  <td className="whitespace-nowrap border-r border-black/20 px-3 py-2">
+                  <td className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-mono">{m.id}</td>
+                  <td className="whitespace-nowrap border-r border-black/10 px-3 py-2">{fmtDate(m.date)}</td>
+                  <td className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">{m.vehicleNo || m.vehicleId}</td>
+                  <td className="whitespace-nowrap border-r border-black/10 px-3 py-2">{m.maintenanceType || "—"}</td>
+                  <td className="max-w-48 truncate border-r border-black/10 px-3 py-2" title={m.description}>{m.description || "—"}</td>
+                  <td className="whitespace-nowrap border-r border-black/10 px-3 py-2">{m.partName || "—"}</td>
+                  <td className="whitespace-nowrap border-r border-black/10 px-3 py-2">{m.vendorName || "—"}</td>
+                  <td className="whitespace-nowrap border-r border-black/10 px-3 py-2 text-right">{m.labourCost || "—"}</td>
+                  <td className="whitespace-nowrap border-r border-black/10 px-3 py-2 text-right">{m.partsCost || "—"}</td>
+                  <td className="whitespace-nowrap border-r border-black/10 px-3 py-2 text-right font-semibold">{m.totalCost || "—"}</td>
+                  <td className="whitespace-nowrap border-r border-black/10 px-3 py-2">{m.odometerKm ? `${m.odometerKm} km` : "—"}</td>
+                  <td className="whitespace-nowrap border-r border-black/10 px-3 py-2">
                     {m.nextServiceDate ? fmtDate(m.nextServiceDate) : m.nextServiceKm ? `${m.nextServiceKm} km` : "—"}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2">{m.invoiceNo || "—"}</td>

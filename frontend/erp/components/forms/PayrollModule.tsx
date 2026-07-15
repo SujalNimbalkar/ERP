@@ -19,14 +19,16 @@ export function PayrollModule() {
         <p className="mt-1 text-sm text-black">
           Salary and daily wage/expense entries for drivers and staff.
         </p>
-        <div className="mt-4 flex flex-wrap border border-black">
+        <div className="mt-4 flex flex-wrap rounded-lg border border-black/10 bg-white p-1 shadow-sm">
           {PAYROLL_TABS.map((tab) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
-              className={`px-3 py-1.5 text-sm text-black ${
-                activeTab === tab.id ? "font-semibold underline" : "font-normal"
+              className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+                activeTab === tab.id
+                  ? "bg-brand-tint font-semibold text-brand-text"
+                  : "font-normal text-black hover:bg-black/5"
               }`}
             >
               {tab.label}

@@ -45,10 +45,10 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Toast } from "@/components/ui/Toast";
 import { useConfirmSave } from "@/components/ui/useConfirmSave";
 
-/** Amber-filled button, standing out from the app's usual black-border/white
- * buttons — diesel is amber (fuel) throughout the app. */
+/** Filled in the Diesel category color (blue) — matches the Dashboard's
+ * Diesel column and the "Diesel filled?" checkbox above. */
 const DIESEL_BUTTON_CLASS =
-  "border border-amber-700 bg-amber-500 px-4 py-1.5 text-sm font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50";
+  "rounded-md bg-diesel px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:brightness-90 disabled:cursor-not-allowed disabled:opacity-50";
 
 function emptyDieselSubValues(): Record<string, string> {
   return { ...emptyValues(DIESEL_SUBFORM_FIELDS), ratePerLiter: String(DIESEL_RATE_PER_LITER) };
@@ -865,14 +865,16 @@ export function CargoTransportForm() {
       <div className="mb-4">
         <h2 className="text-xl font-semibold text-black">Cargo Transport</h2>
 
-        <div className="mt-3 flex overflow-x-auto border border-black sm:flex-wrap">
+        <div className="mt-3 flex overflow-x-auto rounded-lg border border-black/10 bg-white p-1 shadow-sm sm:flex-wrap">
           {cargoSources.map((source) => (
             <button
               key={source.type}
               type="button"
               onClick={() => switchSource(source)}
-              className={`shrink-0 whitespace-nowrap px-3 py-1.5 text-sm text-black ${
-                activeSource.type === source.type ? "font-semibold underline" : "font-normal"
+              className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm transition-colors ${
+                activeSource.type === source.type
+                  ? "bg-brand-tint font-semibold text-brand-text"
+                  : "font-normal text-black hover:bg-black/5"
               }`}
             >
               {source.label}
@@ -907,7 +909,7 @@ export function CargoTransportForm() {
         >
           <div className="space-y-2.5 sm:col-span-2">
             {invoices.map((invoice, invoiceIndex) => (
-              <div key={invoice.id} className="border border-black bg-white p-2.5 sm:p-3">
+              <div key={invoice.id} className="rounded-lg border border-black/10 bg-page p-2.5 shadow-sm sm:p-3">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <h4 className="text-sm font-semibold text-black">
                     Invoice {invoiceIndex + 1}
@@ -916,7 +918,7 @@ export function CargoTransportForm() {
                     <button
                       type="button"
                       onClick={() => removeInvoice(invoice.id)}
-                      className="text-xs text-black underline"
+                      className="text-xs text-critical underline"
                     >
                       Remove invoice
                     </button>
@@ -983,7 +985,7 @@ export function CargoTransportForm() {
 
                 <div className="mt-2.5 space-y-2">
                   {invoice.lines.map((line, lineIndex) => (
-                    <div key={line.id} className="border border-black/40 p-2 sm:p-2.5">
+                    <div key={line.id} className="rounded-md border border-black/10 bg-white p-2 sm:p-2.5">
                       <div className="mb-1.5 flex items-center justify-between gap-2">
                         <span className="text-xs font-medium text-black">
                           Item {lineIndex + 1}
@@ -992,7 +994,7 @@ export function CargoTransportForm() {
                           <button
                             type="button"
                             onClick={() => removeMaterialLine(invoice.id, line.id)}
-                            className="text-xs text-black underline"
+                            className="text-xs text-critical underline"
                           >
                             Remove
                           </button>
@@ -1044,7 +1046,7 @@ export function CargoTransportForm() {
                 <button
                   type="button"
                   onClick={() => addMaterialLine(invoice.id)}
-                  className="mt-2 text-xs text-black underline sm:text-sm"
+                  className="mt-2 text-xs font-medium text-brand-text underline sm:text-sm"
                 >
                   + Add material to this invoice
                 </button>
@@ -1054,7 +1056,7 @@ export function CargoTransportForm() {
             <button
               type="button"
               onClick={addInvoice}
-              className="text-sm text-black underline"
+              className="text-sm font-medium text-brand-text underline"
             >
               + Add another invoice
             </button>
@@ -1067,19 +1069,19 @@ export function CargoTransportForm() {
             description="Calculated from total weight of all materials in this trip."
           >
             <div className="sm:col-span-2 grid grid-cols-3 gap-2">
-              <div className="border border-black px-2 py-1.5 text-sm text-black">
-                <p className="text-xs font-medium">Total Weight</p>
+              <div className="rounded-md border border-black/10 bg-page px-2 py-1.5 text-sm text-black">
+                <p className="text-xs font-medium text-black/60">Total Weight</p>
                 <p className="text-sm sm:text-base">
                   {Math.round(totalTripWeight * 1000) / 1000} kg
                 </p>
               </div>
-              <div className="border border-black px-2 py-1.5 text-sm text-black">
-                <p className="text-xs font-medium">Rate</p>
+              <div className="rounded-md border border-black/10 bg-page px-2 py-1.5 text-sm text-black">
+                <p className="text-xs font-medium text-black/60">Rate</p>
                 <p className="text-sm sm:text-base">{summaryRateDisplay.rate}</p>
-                <p className="text-xs">{summaryRateDisplay.tier}</p>
+                <p className="text-xs text-black/60">{summaryRateDisplay.tier}</p>
               </div>
-              <div className="border border-black px-2 py-1.5 text-sm text-black">
-                <p className="text-xs font-medium">Transport Amount</p>
+              <div className="rounded-md border-t-2 border-brand bg-brand-tint px-2 py-1.5 text-sm text-black">
+                <p className="text-xs font-medium text-black/60">Transport Amount</p>
                 <p className="text-sm font-semibold sm:text-base">
                   Rs {Math.round(totalTransportAmount * 100) / 100}
                 </p>
@@ -1088,18 +1090,18 @@ export function CargoTransportForm() {
           </FormSection>
         )}
 
-        <div className="p-1.5">
-          <FormSection
-            title="4. Diesel Tank Fill"
-            description="Check this if the vehicle's tank was filled on this trip — save it here first so its ref is ready to pick in Trip Expenses below."
-          >
+        <FormSection
+          title="4. Diesel Tank Fill"
+          description="Check this if the vehicle's tank was filled on this trip — save it here first so its ref is ready to pick in Trip Expenses below."
+          accent="diesel"
+        >
             <div className="sm:col-span-2">
               <ColoredCheckboxField
                 id="field-dieselFilled"
                 label="Diesel filled on this trip?"
                 checked={values.dieselFilled === "true"}
                 onChange={(checked) => handleChange("dieselFilled", checked ? "true" : "false")}
-                color="amber"
+                category="diesel"
               />
             </div>
             {values.dieselFilled === "true" && (
@@ -1133,8 +1135,7 @@ export function CargoTransportForm() {
                 </div>
               </>
             )}
-          </FormSection>
-        </div>
+        </FormSection>
 
         {EXPENSE_SECTION && (
           <FormSection
@@ -1165,7 +1166,7 @@ export function CargoTransportForm() {
                     value={values.dieselFillRef || ""}
                     onChange={(e) => handleChange("dieselFillRef", e.target.value)}
                     disabled={!values.vehicleNo.trim() || vehicleDieselFills.length === 0}
-                    className="w-full border border-black bg-white px-2.5 py-1.5 text-sm text-black outline-none focus:border-black disabled:cursor-not-allowed disabled:opacity-60"
+                    className="w-full rounded-md border border-black/15 bg-white px-2.5 py-1.5 text-sm text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <option value="">
                       {values.vehicleNo.trim()
@@ -1194,40 +1195,39 @@ export function CargoTransportForm() {
           </FormSection>
         )}
 
-        <div className="space-y-3 p-1.5">
-          <FormSection
-            title="6. Vehicle Maintenance"
-            description="Check this if maintenance was done on this trip — it creates a Vehicle Maintenance record linked to this vehicle and date."
-          >
-            <div className="sm:col-span-2">
-              <ColoredCheckboxField
-                id="field-maintenanceThisTrip"
-                label="Maintenance done on this trip?"
-                checked={values.maintenanceThisTrip === "true"}
-                onChange={(checked) => handleChange("maintenanceThisTrip", checked ? "true" : "false")}
-                color="blue"
-              />
-            </div>
-          </FormSection>
+        <FormSection
+          title="6. Vehicle Maintenance"
+          description="Check this if maintenance was done on this trip — it creates a Vehicle Maintenance record linked to this vehicle and date."
+          accent="maintenance"
+        >
+          <div className="sm:col-span-2">
+            <ColoredCheckboxField
+              id="field-maintenanceThisTrip"
+              label="Maintenance done on this trip?"
+              checked={values.maintenanceThisTrip === "true"}
+              onChange={(checked) => handleChange("maintenanceThisTrip", checked ? "true" : "false")}
+              category="maintenance"
+            />
+          </div>
+        </FormSection>
 
-          {values.maintenanceThisTrip === "true" &&
-            MAINTENANCE_SUBFORM_SECTIONS.map((section) => (
-              <FormSection
-                key={section.id}
-                title={section.title}
-                columns={section.id === "type-description" ? 2 : section.id === "cost" ? 3 : 4}
-              >
-                {section.fields.map((field) => (
-                  <FormField
-                    key={field.name}
-                    field={field}
-                    value={maintenanceSubValues[field.name]}
-                    onChange={handleMaintenanceSubChange}
-                  />
-                ))}
-              </FormSection>
-            ))}
-        </div>
+        {values.maintenanceThisTrip === "true" &&
+          MAINTENANCE_SUBFORM_SECTIONS.map((section) => (
+            <FormSection
+              key={section.id}
+              title={section.title}
+              columns={section.id === "type-description" ? 2 : section.id === "cost" ? 3 : 4}
+            >
+              {section.fields.map((field) => (
+                <FormField
+                  key={field.name}
+                  field={field}
+                  value={maintenanceSubValues[field.name]}
+                  onChange={handleMaintenanceSubChange}
+                />
+              ))}
+            </FormSection>
+          ))}
 
         <StatusMessage type={status} message={message} />
 
@@ -1235,7 +1235,7 @@ export function CargoTransportForm() {
           <button
             type="submit"
             disabled={submitting}
-            className="border border-black bg-black px-5 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-md bg-brand px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting ? "Saving…" : "Save Trip"}
           </button>
@@ -1278,32 +1278,34 @@ export function CargoTransportForm() {
                   cargoSources.find((s) => s.type === invoice.fromType)?.label ?? invoice.fromType
                 } → ${invoice.toParty}`}
               />
-              <table className="w-full border-collapse text-xs text-black">
-                <thead>
-                  <tr>
-                    <th className="border border-black px-1.5 py-0.5 text-left">Material</th>
-                    <th className="border border-black px-1.5 py-0.5 text-right">Qty</th>
-                    <th className="border border-black px-1.5 py-0.5 text-right">Weight (kg)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {invoice.lines.map((line) => (
-                    <tr key={line.id}>
-                      <td className="border border-black px-1.5 py-0.5">
-                        {line.materialCode}
-                        {line.materialDescription ? ` — ${line.materialDescription}` : ""}
-                      </td>
-                      <td className="border border-black px-1.5 py-0.5 text-right">
-                        {line.quantity} {line.uom}
-                        {line.receivedQty ? ` (recd ${line.receivedQty})` : ""}
-                      </td>
-                      <td className="border border-black px-1.5 py-0.5 text-right">
-                        {line.totalWt || "—"}
-                      </td>
+              <div className="overflow-hidden rounded-md border border-black/10">
+                <table className="w-full border-collapse text-xs text-black">
+                  <thead>
+                    <tr className="bg-page">
+                      <th className="px-1.5 py-1 text-left font-semibold">Material</th>
+                      <th className="px-1.5 py-1 text-right font-semibold">Qty</th>
+                      <th className="px-1.5 py-1 text-right font-semibold">Weight (kg)</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {invoice.lines.map((line) => (
+                      <tr key={line.id} className="border-t border-black/10">
+                        <td className="px-1.5 py-1">
+                          {line.materialCode}
+                          {line.materialDescription ? ` — ${line.materialDescription}` : ""}
+                        </td>
+                        <td className="px-1.5 py-1 text-right">
+                          {line.quantity} {line.uom}
+                          {line.receivedQty ? ` (recd ${line.receivedQty})` : ""}
+                        </td>
+                        <td className="px-1.5 py-1 text-right">
+                          {line.totalWt || "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ))}
 

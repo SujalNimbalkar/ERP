@@ -172,13 +172,13 @@ export function VehicleMasterForm() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search reg no, type, make, owner…"
-          className="min-w-52 flex-1 border border-black bg-white px-3 py-2 text-sm text-black outline-none"
+          className="min-w-52 flex-1 rounded-md border border-black/15 bg-white px-3 py-2 text-sm text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30"
         />
         {mode === "none" ? (
           <button
             type="button"
             onClick={startAdd}
-            className="border border-black px-4 py-2 text-sm font-medium text-black"
+            className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-hover"
           >
             + Add Vehicle
           </button>
@@ -186,7 +186,7 @@ export function VehicleMasterForm() {
           <button
             type="button"
             onClick={cancelForm}
-            className="border border-black px-4 py-2 text-sm text-black"
+            className="rounded-md border border-black/15 px-4 py-2 text-sm text-black transition-colors hover:bg-black/5"
           >
             Cancel
           </button>
@@ -197,7 +197,7 @@ export function VehicleMasterForm() {
       {mode !== "none" && (
         <form
           onSubmit={handleSubmit}
-          className="mb-6 border border-black p-5 space-y-5"
+          className="mb-6 space-y-5 rounded-lg border border-black/10 bg-white p-5 shadow-sm"
         >
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-black">
@@ -206,14 +206,14 @@ export function VehicleMasterForm() {
             <div className="flex gap-2">
               <button
                 type="submit"
-                className="border border-black bg-white px-5 py-1.5 text-sm font-semibold text-black"
+                className="rounded-md bg-brand px-5 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-brand-hover"
               >
                 {mode === "add" ? "Save Vehicle" : "Update"}
               </button>
               <button
                 type="button"
                 onClick={cancelForm}
-                className="border border-black px-4 py-1.5 text-sm text-black"
+                className="rounded-md border border-black/15 px-4 py-1.5 text-sm text-black transition-colors hover:bg-black/5"
               >
                 Cancel
               </button>
@@ -250,29 +250,29 @@ export function VehicleMasterForm() {
 
       {/* ── browse table ── */}
       {vehicles.length === 0 ? (
-        <p className="border border-black px-4 py-6 text-sm text-black">
+        <p className="rounded-lg border border-black/10 bg-white px-4 py-6 text-sm text-black shadow-sm">
           No vehicles added yet. Click <strong>+ Add Vehicle</strong> to register the first one.
         </p>
       ) : filtered.length === 0 ? (
-        <p className="border border-black px-4 py-6 text-sm text-black">
+        <p className="rounded-lg border border-black/10 bg-white px-4 py-6 text-sm text-black shadow-sm">
           No vehicles match &ldquo;{search}&rdquo;.
         </p>
       ) : (
-        <div className="overflow-x-auto border border-black">
+        <div className="overflow-x-auto rounded-lg border border-black/10 shadow-sm">
           <table className="w-full border-collapse text-left text-xs text-black">
             <thead>
-              <tr className="border-b border-black bg-white">
-                <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 font-semibold">Actions</th>
-                <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 font-semibold">ID</th>
-                <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 font-semibold">Reg No</th>
-                <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 font-semibold">Type</th>
-                <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 font-semibold">Make / Model</th>
-                <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 font-semibold">Cap (kg)</th>
-                <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 font-semibold">Owner</th>
-                <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 font-semibold">Insurance</th>
-                <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 font-semibold">Fitness</th>
-                <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 font-semibold">PUC</th>
-                <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 font-semibold">Road Tax</th>
+              <tr className="border-b border-black/10 bg-page">
+                <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">Actions</th>
+                <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">ID</th>
+                <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">Reg No</th>
+                <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">Type</th>
+                <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">Make / Model</th>
+                <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">Cap (kg)</th>
+                <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">Owner</th>
+                <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">Insurance</th>
+                <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">Fitness</th>
+                <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">PUC</th>
+                <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">Road Tax</th>
                 <th className="whitespace-nowrap px-3 py-2 font-semibold">Permit</th>
               </tr>
             </thead>
@@ -285,32 +285,32 @@ export function VehicleMasterForm() {
                   return (
                     <tr
                       key={v.id}
-                      className={`border-b border-black/20 ${isEditing ? "bg-black/5" : "hover:bg-black/5"}`}
+                      className={`border-b border-black/10 ${isEditing ? "bg-black/5" : "hover:bg-black/5"}`}
                     >
-                      <td className="whitespace-nowrap border-r border-black/20 px-3 py-2">
+                      <td className="whitespace-nowrap border-r border-black/10 px-3 py-2">
                         <div className="flex gap-2">
                           <button
                             type="button"
                             onClick={() => isEditing ? cancelForm() : startEdit(v)}
-                            className="text-black underline"
+                            className="text-brand-text underline"
                           >
                             {isEditing ? "Cancel" : "Edit"}
                           </button>
                           <button
                             type="button"
                             onClick={() => handleDelete(v)}
-                            className="text-black underline"
+                            className="text-critical underline"
                           >
                             Delete
                           </button>
                         </div>
                       </td>
-                      <td className="whitespace-nowrap border-r border-black/20 px-3 py-2 font-mono">{v.id}</td>
-                      <td className="whitespace-nowrap border-r border-black/20 px-3 py-2 font-semibold">{v.registrationNo}</td>
-                      <td className="whitespace-nowrap border-r border-black/20 px-3 py-2">{v.vehicleType || "—"}</td>
-                      <td className="whitespace-nowrap border-r border-black/20 px-3 py-2">{v.makeModel || "—"}</td>
-                      <td className="whitespace-nowrap border-r border-black/20 px-3 py-2">{v.loadCapacityKg || "—"}</td>
-                      <td className="whitespace-nowrap border-r border-black/20 px-3 py-2">{v.ownerName || "—"}</td>
+                      <td className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-mono">{v.id}</td>
+                      <td className="whitespace-nowrap border-r border-black/10 px-3 py-2 font-semibold">{v.registrationNo}</td>
+                      <td className="whitespace-nowrap border-r border-black/10 px-3 py-2">{v.vehicleType || "—"}</td>
+                      <td className="whitespace-nowrap border-r border-black/10 px-3 py-2">{v.makeModel || "—"}</td>
+                      <td className="whitespace-nowrap border-r border-black/10 px-3 py-2">{v.loadCapacityKg || "—"}</td>
+                      <td className="whitespace-nowrap border-r border-black/10 px-3 py-2">{v.ownerName || "—"}</td>
                       {VEHICLE_COMPLIANCE_FIELDS.map(({ key, label }, idx) => {
                         const cell = complianceCell(v[key] as string);
                         return (
@@ -319,7 +319,7 @@ export function VehicleMasterForm() {
                             title={label}
                             className={`whitespace-nowrap px-3 py-2 ${
                               idx < VEHICLE_COMPLIANCE_FIELDS.length - 1
-                                ? "border-r border-black/20"
+                                ? "border-r border-black/10"
                                 : ""
                             } ${cell.urgent ? "font-semibold" : ""}`}
                           >

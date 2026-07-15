@@ -5,9 +5,35 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* Brand palette — sampled from the real Sahyadri Infra logo (public/sahyadri-
+   infra-header.png: orange fill #f88838 with white text) rather than an
+   invented color. Shades/tints derived from that one sampled hex; good/
+   critical reuse the exact values already validated on the Dashboard so
+   "success"/"profit" mean the same color everywhere in the app. */
+@theme {
+  --color-page: #faf7f4;
+  --color-brand: #f88838;
+  --color-brand-hover: #da7831;
+  --color-brand-pressed: #c16a2c;
+  --color-brand-text: #9a5423;
+  --color-brand-tint: #fef5ef;
+  --color-brand-tint-border: #feeadb;
+  --color-good: #006300;
+  --color-good-tint: #f0f9f0;
+  --color-critical: #d03b3b;
+  --color-critical-tint: #fdf1f1;
+
+  /* Same category, same color everywhere — matches the Dashboard's
+     validated categorical palette (components/dashboard/DashboardView.tsx)
+     so a "linked Diesel/Maintenance record" checkbox on a form reads as
+     the same category as the Diesel/Maintenance columns on Dashboard. */
+  --color-diesel: #2a78d6;
+  --color-maintenance: #eda100;
+}
+
 html,
 body {
-  background-color: #ffffff;
+  background-color: var(--color-page);
   color: #000000;
   font-family: var(--font-sans), system-ui, sans-serif;
 }

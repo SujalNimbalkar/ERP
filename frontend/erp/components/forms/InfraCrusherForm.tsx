@@ -44,10 +44,10 @@ const TRIP_DETAIL_NAMES = ["date", "vehicleNo", "driverId", "driverName"];
 const CRUSHER_NAMES = ["crusherChallanNo", "materialType", "crusherRate", "crusherBrass", "crusherLocation", "crusherAmount"];
 const SALE_NAMES = ["challanNo", "customerName", "clientLocation", "qtyBrass", "rate", "totalAmount", "difference"];
 
-/** Amber-filled button, standing out from the app's usual black-border/white
- * buttons — diesel is amber (fuel) throughout the app. */
+/** Filled in the Diesel category color (blue) — matches the Dashboard's
+ * Diesel column and the "Diesel filled?" checkbox above. */
 const DIESEL_BUTTON_CLASS =
-  "border border-amber-700 bg-amber-500 px-4 py-1.5 text-sm font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50";
+  "rounded-md bg-diesel px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:brightness-90 disabled:cursor-not-allowed disabled:opacity-50";
 
 function emptyDieselSubValues(): Record<string, string> {
   return { ...emptyValues(DIESEL_SUBFORM_FIELDS), ratePerLiter: String(DIESEL_RATE_PER_LITER) };
@@ -410,15 +410,18 @@ export function InfraCrusherForm() {
           ))}
         </FormSection>
 
-        <div className="border-2 border-amber-500 p-1.5">
-          <FormSection title="4. Diesel Tank Fill" description="Check this if the vehicle's tank was filled on this trip — save it here first so its ref is ready to pick in Trip Expenses below.">
+        <FormSection
+          title="4. Diesel Tank Fill"
+          description="Check this if the vehicle's tank was filled on this trip — save it here first so its ref is ready to pick in Trip Expenses below."
+          accent="diesel"
+        >
             <div className="sm:col-span-2">
               <ColoredCheckboxField
                 id="field-dieselFilled"
                 label="Diesel filled on this trip?"
                 checked={values.dieselFilled === "true"}
                 onChange={(checked) => handleChange("dieselFilled", checked ? "true" : "false")}
-                color="amber"
+                category="diesel"
               />
             </div>
             {values.dieselFilled === "true" && (
@@ -452,8 +455,7 @@ export function InfraCrusherForm() {
                 </div>
               </>
             )}
-          </FormSection>
-        </div>
+        </FormSection>
 
         <FormSection
           title="5. Trip Expenses"
@@ -483,7 +485,7 @@ export function InfraCrusherForm() {
                   value={values.dieselFillRef || ""}
                   onChange={(e) => handleChange("dieselFillRef", e.target.value)}
                   disabled={!values.vehicleNo.trim() || vehicleDieselFills.length === 0}
-                  className="w-full border border-black bg-white px-2.5 py-1.5 text-sm text-black outline-none focus:border-black disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full rounded-md border border-black/15 bg-white px-2.5 py-1.5 text-sm text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <option value="">
                     {values.vehicleNo.trim()
@@ -511,47 +513,51 @@ export function InfraCrusherForm() {
           ))}
         </FormSection>
 
-        <div className="space-y-3 border-2 border-blue-500 p-1.5">
-          <FormSection title="6. Vehicle Maintenance" description="Check this if maintenance was done on this trip — it creates a Vehicle Maintenance record linked to this vehicle and date.">
-            <div className="sm:col-span-2">
-              <ColoredCheckboxField
-                id="field-maintenanceThisTrip"
-                label="Maintenance done on this trip?"
-                checked={values.maintenanceThisTrip === "true"}
-                onChange={(checked) => handleChange("maintenanceThisTrip", checked ? "true" : "false")}
-                color="blue"
-              />
-            </div>
-          </FormSection>
+        <FormSection
+          title="6. Vehicle Maintenance"
+          description="Check this if maintenance was done on this trip — it creates a Vehicle Maintenance record linked to this vehicle and date."
+          accent="maintenance"
+        >
+          <div className="sm:col-span-2">
+            <ColoredCheckboxField
+              id="field-maintenanceThisTrip"
+              label="Maintenance done on this trip?"
+              checked={values.maintenanceThisTrip === "true"}
+              onChange={(checked) => handleChange("maintenanceThisTrip", checked ? "true" : "false")}
+              category="maintenance"
+            />
+          </div>
+        </FormSection>
 
-          {values.maintenanceThisTrip === "true" &&
-            MAINTENANCE_SUBFORM_SECTIONS.map((section) => (
-              <FormSection
-                key={section.id}
-                title={section.title}
-                columns={section.id === "type-description" ? 2 : section.id === "cost" ? 3 : 4}
-              >
-                {section.fields.map((field) => (
-                  <FormField
-                    key={field.name}
-                    field={field}
-                    value={maintenanceSubValues[field.name]}
-                    onChange={handleMaintenanceSubChange}
-                  />
-                ))}
-              </FormSection>
-            ))}
-        </div>
+        {values.maintenanceThisTrip === "true" &&
+          MAINTENANCE_SUBFORM_SECTIONS.map((section) => (
+            <FormSection
+              key={section.id}
+              title={section.title}
+              columns={section.id === "type-description" ? 2 : section.id === "cost" ? 3 : 4}
+            >
+              {section.fields.map((field) => (
+                <FormField
+                  key={field.name}
+                  field={field}
+                  value={maintenanceSubValues[field.name]}
+                  onChange={handleMaintenanceSubChange}
+                />
+              ))}
+            </FormSection>
+          ))}
 
         <StatusMessage type={status} message={message} />
 
-        <button
-          type="submit"
-          disabled={submitting}
-          className="border border-black bg-white px-5 py-2.5 text-sm font-medium text-black disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {submitting ? "Saving…" : "Save Trip"}
-        </button>
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={submitting}
+            className="rounded-md bg-brand px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {submitting ? "Saving…" : "Save Trip"}
+          </button>
+        </div>
       </form>
 
       <ConfirmDialog

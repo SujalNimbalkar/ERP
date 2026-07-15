@@ -19,8 +19,8 @@ export function Toast({ message, type = "success", duration = 4000, onClose }: T
     <div
       role="status"
       aria-live="polite"
-      className={`fixed bottom-5 right-5 z-50 max-w-sm border border-black px-4 py-3 text-sm shadow-lg ${
-        type === "error" ? "bg-white text-black" : "bg-black text-white"
+      className={`fixed bottom-5 right-5 z-50 max-w-sm rounded-lg px-4 py-3 text-sm shadow-lg ${
+        type === "error" ? "border-l-4 border-critical bg-white text-black" : "bg-brand text-white"
       }`}
     >
       <div className="flex items-start gap-3">

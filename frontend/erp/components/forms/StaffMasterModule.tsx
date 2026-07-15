@@ -22,7 +22,9 @@ const TABS = [
 type TabId = (typeof TABS)[number]["id"];
 
 const inputClass =
-  "w-full border border-black bg-white px-3 py-2 text-sm text-black outline-none focus:border-black";
+  "w-full rounded-md border border-black/15 bg-white px-3 py-2 text-sm text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30";
+const cellInputClass =
+  "w-full rounded-md border border-black/15 bg-white px-2 py-1 text-xs text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30";
 
 interface EditState {
   id: string;
@@ -152,7 +154,7 @@ export function StaffMasterModule() {
           Accountants, hamals and other non-driver staff. {staff.length} on file. Used by
           Payroll's Salary and Daily Expenses forms.
         </p>
-        <div className="mt-4 flex flex-wrap border border-black">
+        <div className="mt-4 flex flex-wrap rounded-lg border border-black/10 bg-white p-1 shadow-sm">
           {TABS.map((tab) => (
             <button
               key={tab.id}
@@ -162,8 +164,10 @@ export function StaffMasterModule() {
                 setSaveStatus("idle");
                 setSaveMsg("");
               }}
-              className={`px-3 py-1.5 text-sm text-black ${
-                activeTab === tab.id ? "font-semibold underline" : "font-normal"
+              className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+                activeTab === tab.id
+                  ? "bg-brand-tint font-semibold text-brand-text"
+                  : "font-normal text-black hover:bg-black/5"
               }`}
             >
               {tab.label}
@@ -179,29 +183,29 @@ export function StaffMasterModule() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name or role…"
-            className="mb-4 w-full border border-black bg-white px-3 py-2 text-sm text-black outline-none"
+            className="mb-4 w-full rounded-md border border-black/15 bg-white px-3 py-2 text-sm text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30"
           />
 
-          <div className="overflow-x-auto border border-black">
+          <div className="overflow-x-auto rounded-lg border border-black/10 shadow-sm">
             <table className="w-full border-collapse text-left text-sm text-black">
               <thead>
-                <tr className="border-b border-black bg-white">
-                  <th className="whitespace-nowrap border-r border-black/30 px-3 py-2 text-xs font-semibold">
+                <tr className="border-b border-black/10 bg-page">
+                  <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 text-xs font-semibold">
                     ID
                   </th>
-                  <th className="border-r border-black/30 px-3 py-2 text-xs font-semibold">
+                  <th className="border-r border-black/10 px-3 py-2 text-xs font-semibold">
                     Name
                   </th>
-                  <th className="border-r border-black/30 px-3 py-2 text-xs font-semibold">
+                  <th className="border-r border-black/10 px-3 py-2 text-xs font-semibold">
                     Role
                   </th>
-                  <th className="border-r border-black/30 px-3 py-2 text-xs font-semibold">
+                  <th className="border-r border-black/10 px-3 py-2 text-xs font-semibold">
                     Mobile
                   </th>
-                  <th className="border-r border-black/30 px-3 py-2 text-xs font-semibold">
+                  <th className="border-r border-black/10 px-3 py-2 text-xs font-semibold">
                     Rate (Rs)
                   </th>
-                  <th className="border-r border-black/30 px-3 py-2 text-xs font-semibold">
+                  <th className="border-r border-black/10 px-3 py-2 text-xs font-semibold">
                     Notes
                   </th>
                   <th className="px-3 py-2 text-xs font-semibold">Action</th>
@@ -221,23 +225,23 @@ export function StaffMasterModule() {
                     const isEditingThis = editing?.id === s.id;
                     if (isEditingThis && editing) {
                       return (
-                        <tr key={s.id} className="border-b border-black bg-black/5">
-                          <td className="border-r border-black/20 px-2 py-1.5 font-mono text-xs">
+                        <tr key={s.id} className="border-b border-black/10 bg-brand-tint">
+                          <td className="border-r border-black/10 px-2 py-1.5 font-mono text-xs">
                             {s.id}
                           </td>
-                          <td className="border-r border-black/20 px-2 py-1.5">
+                          <td className="border-r border-black/10 px-2 py-1.5">
                             <input
                               type="text"
                               value={editing.name}
                               onChange={(e) => setEditing({ ...editing, name: e.target.value })}
-                              className="w-full border border-black bg-white px-2 py-1 text-xs text-black outline-none"
+                              className={cellInputClass}
                             />
                           </td>
-                          <td className="border-r border-black/20 px-2 py-1.5">
+                          <td className="border-r border-black/10 px-2 py-1.5">
                             <select
                               value={editing.role}
                               onChange={(e) => setEditing({ ...editing, role: e.target.value })}
-                              className="w-full border border-black bg-white px-2 py-1 text-xs text-black outline-none"
+                              className={cellInputClass}
                             >
                               {STAFF_ROLES.map((r) => (
                                 <option key={r} value={r}>
@@ -246,31 +250,31 @@ export function StaffMasterModule() {
                               ))}
                             </select>
                           </td>
-                          <td className="border-r border-black/20 px-2 py-1.5">
+                          <td className="border-r border-black/10 px-2 py-1.5">
                             <input
                               type="text"
                               value={editing.mobileNumber}
                               onChange={(e) =>
                                 setEditing({ ...editing, mobileNumber: e.target.value })
                               }
-                              className="w-full border border-black bg-white px-2 py-1 text-xs text-black outline-none"
+                              className={cellInputClass}
                             />
                           </td>
-                          <td className="border-r border-black/20 px-2 py-1.5">
+                          <td className="border-r border-black/10 px-2 py-1.5">
                             <input
                               type="number"
                               step="0.01"
                               value={editing.rate}
                               onChange={(e) => setEditing({ ...editing, rate: e.target.value })}
-                              className="w-full border border-black bg-white px-2 py-1 text-xs text-black outline-none"
+                              className={cellInputClass}
                             />
                           </td>
-                          <td className="border-r border-black/20 px-2 py-1.5">
+                          <td className="border-r border-black/10 px-2 py-1.5">
                             <input
                               type="text"
                               value={editing.notes}
                               onChange={(e) => setEditing({ ...editing, notes: e.target.value })}
-                              className="w-full border border-black bg-white px-2 py-1 text-xs text-black outline-none"
+                              className={cellInputClass}
                             />
                           </td>
                           <td className="px-3 py-1.5 text-xs">
@@ -278,7 +282,7 @@ export function StaffMasterModule() {
                               <button
                                 type="button"
                                 onClick={handleSaveEdit}
-                                className="font-semibold text-black underline"
+                                className="font-semibold text-brand-text underline"
                               >
                                 Save
                               </button>
@@ -290,26 +294,26 @@ export function StaffMasterModule() {
                                 Cancel
                               </button>
                             </div>
-                            {editError && <p className="mt-1 text-black">{editError}</p>}
+                            {editError && <p className="mt-1 text-critical">{editError}</p>}
                           </td>
                         </tr>
                       );
                     }
 
                     return (
-                      <tr key={s.id} className="border-b border-black/20 hover:bg-black/5">
-                        <td className="whitespace-nowrap border-r border-black/20 px-3 py-2 text-xs font-mono">
+                      <tr key={s.id} className="border-b border-black/10 hover:bg-black/5">
+                        <td className="whitespace-nowrap border-r border-black/10 px-3 py-2 text-xs font-mono">
                           {s.id}
                         </td>
-                        <td className="border-r border-black/20 px-3 py-2 text-xs">{s.name}</td>
-                        <td className="border-r border-black/20 px-3 py-2 text-xs">{s.role}</td>
-                        <td className="border-r border-black/20 px-3 py-2 text-xs">
+                        <td className="border-r border-black/10 px-3 py-2 text-xs">{s.name}</td>
+                        <td className="border-r border-black/10 px-3 py-2 text-xs">{s.role}</td>
+                        <td className="border-r border-black/10 px-3 py-2 text-xs">
                           {s.mobileNumber || "—"}
                         </td>
-                        <td className="border-r border-black/20 px-3 py-2 text-xs">
+                        <td className="border-r border-black/10 px-3 py-2 text-xs">
                           {s.rate ? `Rs ${s.rate}` : "—"}
                         </td>
-                        <td className="border-r border-black/20 px-3 py-2 text-xs">
+                        <td className="border-r border-black/10 px-3 py-2 text-xs">
                           {s.notes || "—"}
                         </td>
                         <td className="px-3 py-2 text-xs">
@@ -317,14 +321,14 @@ export function StaffMasterModule() {
                             <button
                               type="button"
                               onClick={() => startEdit(s)}
-                              className="text-black underline"
+                              className="text-brand-text underline"
                             >
                               Edit
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDelete(s.id, s.name)}
-                              className="text-black underline"
+                              className="text-critical underline"
                             >
                               Delete
                             </button>
@@ -346,7 +350,7 @@ export function StaffMasterModule() {
 
       {activeTab === "add" && (
         <form onSubmit={handleAdd} className="max-w-lg space-y-4">
-          <div className="border border-black p-4 space-y-4">
+          <div className="space-y-4 rounded-lg border border-black/10 bg-white p-4 shadow-sm">
             <h3 className="text-sm font-semibold text-black">New Staff</h3>
 
             <div className="flex flex-col gap-1">
@@ -433,12 +437,12 @@ export function StaffMasterModule() {
           </div>
 
           {saveStatus === "error" && (
-            <p className="border border-black px-4 py-2 text-sm text-black">{saveMsg}</p>
+            <p className="rounded-md border-l-4 border-critical bg-critical-tint px-4 py-2 text-sm text-black">{saveMsg}</p>
           )}
 
           <button
             type="submit"
-            className="border border-black bg-white px-5 py-2.5 text-sm font-medium text-black"
+            className="rounded-md bg-brand px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-hover"
           >
             Add Staff
           </button>

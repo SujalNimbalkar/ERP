@@ -90,13 +90,15 @@ export function SheetForm({
 
         <StatusMessage type={status} message={message} />
 
-        <button
-          type="submit"
-          disabled={submitting}
-          className="border border-black bg-white px-5 py-2.5 text-sm font-medium text-black disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {submitting ? "Saving…" : "Save to Sheet"}
-        </button>
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={submitting}
+            className="rounded-md bg-brand px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {submitting ? "Saving…" : "Save to Sheet"}
+          </button>
+        </div>
       </form>
 
       <ConfirmDialog

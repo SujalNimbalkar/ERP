@@ -31,13 +31,13 @@ export function ConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="confirm-dialog-title"
     >
       <div
-        className={`flex w-full flex-col border border-black bg-white p-4 sm:p-5 ${
+        className={`flex w-full flex-col rounded-lg border border-black/10 bg-white p-4 shadow-xl sm:p-5 ${
           children ? "max-w-2xl max-h-full" : "max-w-sm"
         }`}
       >
@@ -47,7 +47,7 @@ export function ConfirmDialog({
         <p className="mt-1 text-sm text-black">{message}</p>
 
         {children && (
-          <div className="mt-3 min-h-0 flex-1 overflow-y-auto border border-black p-3">
+          <div className="mt-3 min-h-0 flex-1 overflow-y-auto rounded-md border border-black/10 p-3">
             {children}
           </div>
         )}
@@ -56,7 +56,7 @@ export function ConfirmDialog({
           <button
             type="button"
             onClick={onCancel}
-            className="border border-black bg-white px-4 py-2 text-sm text-black"
+            className="rounded-md border border-black/15 bg-white px-4 py-2 text-sm text-black transition-colors hover:bg-black/5"
           >
             {cancelLabel}
           </button>
@@ -64,7 +64,7 @@ export function ConfirmDialog({
             <button
               type="button"
               onClick={onDelete}
-              className="border border-red-700 bg-red-600 px-4 py-2 text-sm font-medium text-white"
+              className="rounded-md bg-critical px-4 py-2 text-sm font-medium text-white transition-colors hover:brightness-90"
             >
               {deleteLabel}
             </button>
@@ -72,7 +72,7 @@ export function ConfirmDialog({
           <button
             type="button"
             onClick={onConfirm}
-            className="border border-green-800 bg-green-700 px-4 py-2 text-sm font-medium text-white"
+            className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-hover"
           >
             {confirmLabel}
           </button>

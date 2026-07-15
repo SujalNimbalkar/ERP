@@ -21,7 +21,9 @@ const TABS = [
 type TabId = (typeof TABS)[number]["id"];
 
 const inputClass =
-  "w-full border border-black bg-white px-3 py-2 text-sm text-black outline-none focus:border-black";
+  "w-full rounded-md border border-black/15 bg-white px-3 py-2 text-sm text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30";
+const cellInputClass =
+  "w-full rounded-md border border-black/15 bg-white px-2 py-1 text-xs text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30";
 
 interface DisplayRow {
   key: string;
@@ -177,7 +179,7 @@ export function PlantsVendorsModule() {
           own origin tab-bar button in Cargo Transport — leave it unchecked for a
           destination-only vendor. Flip it later without re-entering the place.
         </p>
-        <div className="mt-4 flex flex-wrap border border-black">
+        <div className="mt-4 flex flex-wrap rounded-lg border border-black/10 bg-white p-1 shadow-sm">
           {TABS.map((tab) => (
             <button
               key={tab.id}
@@ -187,8 +189,10 @@ export function PlantsVendorsModule() {
                 setSaveStatus("idle");
                 setSaveMsg("");
               }}
-              className={`px-3 py-1.5 text-sm text-black ${
-                activeTab === tab.id ? "font-semibold underline" : "font-normal"
+              className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+                activeTab === tab.id
+                  ? "bg-brand-tint font-semibold text-brand-text"
+                  : "font-normal text-black hover:bg-black/5"
               }`}
             >
               {tab.label}
@@ -204,20 +208,20 @@ export function PlantsVendorsModule() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name…"
-            className="mb-4 w-full border border-black bg-white px-3 py-2 text-sm text-black outline-none"
+            className="mb-4 w-full rounded-md border border-black/15 bg-white px-3 py-2 text-sm text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30"
           />
 
-          <div className="overflow-x-auto border border-black">
+          <div className="overflow-x-auto rounded-lg border border-black/10 shadow-sm">
             <table className="w-full border-collapse text-left text-sm text-black">
               <thead>
-                <tr className="border-b border-black bg-white">
-                  <th className="border-r border-black/30 px-3 py-2 text-xs font-semibold">
+                <tr className="border-b border-black/10 bg-page">
+                  <th className="border-r border-black/10 px-3 py-2 text-xs font-semibold">
                     Name
                   </th>
-                  <th className="border-r border-black/30 px-3 py-2 text-xs font-semibold">
+                  <th className="border-r border-black/10 px-3 py-2 text-xs font-semibold">
                     Type
                   </th>
-                  <th className="border-r border-black/30 px-3 py-2 text-xs font-semibold">
+                  <th className="border-r border-black/10 px-3 py-2 text-xs font-semibold">
                     Notes
                   </th>
                   <th className="px-3 py-2 text-xs font-semibold">Action</th>
@@ -235,16 +239,16 @@ export function PlantsVendorsModule() {
                     const isEditingThis = row.location && editing?.id === row.location.id;
                     if (isEditingThis && editing) {
                       return (
-                        <tr key={row.key} className="border-b border-black bg-black/5">
-                          <td className="border-r border-black/20 px-2 py-1.5">
+                        <tr key={row.key} className="border-b border-black/10 bg-brand-tint">
+                          <td className="border-r border-black/10 px-2 py-1.5">
                             <input
                               type="text"
                               value={editing.name}
                               onChange={(e) => setEditing({ ...editing, name: e.target.value })}
-                              className="w-full border border-black bg-white px-2 py-1 text-xs text-black outline-none"
+                              className={cellInputClass}
                             />
                           </td>
-                          <td className="border-r border-black/20 px-2 py-1.5">
+                          <td className="border-r border-black/10 px-2 py-1.5">
                             <label className="flex items-center gap-1.5 text-xs">
                               <input
                                 type="checkbox"
@@ -256,12 +260,12 @@ export function PlantsVendorsModule() {
                               Cargo Plant
                             </label>
                           </td>
-                          <td className="border-r border-black/20 px-2 py-1.5">
+                          <td className="border-r border-black/10 px-2 py-1.5">
                             <input
                               type="text"
                               value={editing.notes}
                               onChange={(e) => setEditing({ ...editing, notes: e.target.value })}
-                              className="w-full border border-black bg-white px-2 py-1 text-xs text-black outline-none"
+                              className={cellInputClass}
                             />
                           </td>
                           <td className="px-3 py-1.5 text-xs">
@@ -269,7 +273,7 @@ export function PlantsVendorsModule() {
                               <button
                                 type="button"
                                 onClick={handleSaveEdit}
-                                className="font-semibold text-black underline"
+                                className="font-semibold text-brand-text underline"
                               >
                                 Save
                               </button>
@@ -281,16 +285,16 @@ export function PlantsVendorsModule() {
                                 Cancel
                               </button>
                             </div>
-                            {editError && <p className="mt-1 text-black">{editError}</p>}
+                            {editError && <p className="mt-1 text-critical">{editError}</p>}
                           </td>
                         </tr>
                       );
                     }
 
                     return (
-                      <tr key={row.key} className="border-b border-black/20 hover:bg-black/5">
-                        <td className="border-r border-black/20 px-3 py-2 text-xs">{row.name}</td>
-                        <td className="border-r border-black/20 px-3 py-2 text-xs">
+                      <tr key={row.key} className="border-b border-black/10 hover:bg-black/5">
+                        <td className="border-r border-black/10 px-3 py-2 text-xs">{row.name}</td>
+                        <td className="border-r border-black/10 px-3 py-2 text-xs">
                           {row.isBuiltIn ? (
                             <span className="text-black/50">Built-in Plant</span>
                           ) : row.isCargoPlant ? (
@@ -299,7 +303,7 @@ export function PlantsVendorsModule() {
                             <span>Vendor</span>
                           )}
                         </td>
-                        <td className="border-r border-black/20 px-3 py-2 text-xs">
+                        <td className="border-r border-black/10 px-3 py-2 text-xs">
                           {row.notes || "—"}
                         </td>
                         <td className="px-3 py-2 text-xs">
@@ -308,7 +312,7 @@ export function PlantsVendorsModule() {
                               <button
                                 type="button"
                                 onClick={() => startEdit(row.location as LocationEntry)}
-                                className="text-black underline"
+                                className="text-brand-text underline"
                               >
                                 Edit
                               </button>
@@ -317,7 +321,7 @@ export function PlantsVendorsModule() {
                                 onClick={() =>
                                   handleDelete((row.location as LocationEntry).id, row.name)
                                 }
-                                className="text-black underline"
+                                className="text-critical underline"
                               >
                                 Delete
                               </button>
@@ -340,7 +344,7 @@ export function PlantsVendorsModule() {
 
       {activeTab === "add" && (
         <form onSubmit={handleAdd} className="max-w-lg space-y-4">
-          <div className="border border-black p-4 space-y-4">
+          <div className="space-y-4 rounded-lg border border-black/10 bg-white p-4 shadow-sm">
             <h3 className="text-sm font-semibold text-black">New Place</h3>
 
             <div className="flex flex-col gap-1">
@@ -392,12 +396,12 @@ export function PlantsVendorsModule() {
           </div>
 
           {saveStatus === "error" && (
-            <p className="border border-black px-4 py-2 text-sm text-black">{saveMsg}</p>
+            <p className="rounded-md border-l-4 border-critical bg-critical-tint px-4 py-2 text-sm text-black">{saveMsg}</p>
           )}
 
           <button
             type="submit"
-            className="border border-black bg-white px-5 py-2.5 text-sm font-medium text-black"
+            className="rounded-md bg-brand px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-hover"
           >
             Add
           </button>
