@@ -532,8 +532,21 @@ export const INFRA_FIELDS: FieldConfig[] = [
     placeholder: "Auto: crusher rate x crusher brass",
   },
   { name: "challanNo", label: "Challan No", type: "text" },
-  { name: "customerName", label: "Customer Name", type: "text", required: true },
-  { name: "clientLocation", label: "Client Location", type: "text", placeholder: "e.g. delivery site, plant name" },
+  {
+    name: "customerName",
+    label: "Customer Name (auto)",
+    type: "text",
+    required: true,
+    readOnly: true,
+    placeholder: "Pick a Client / Project below",
+  },
+  {
+    name: "clientLocation",
+    label: "Client Location (auto)",
+    type: "text",
+    readOnly: true,
+    placeholder: "Auto-filled from the selected Client / Project",
+  },
   { name: "qtyBrass", label: "Qty (In Brass)", type: "number", step: "0.01" },
   { name: "rate", label: "Selling Rate (Rs/Brass)", type: "number", step: "0.01" },
   {
@@ -579,6 +592,15 @@ export const INFRA_FIELDS: FieldConfig[] = [
   {
     name: "tripExpenseRef",
     label: "Trip Expense Ref (auto)",
+    type: "text",
+    readOnly: true,
+  },
+  // Reference into the Client Companies master (lib/clientStore.ts) — the
+  // reliable join key Infra billing groups trips by. Appended last so
+  // existing sheet rows keep their column alignment, same as the fields above.
+  {
+    name: "clientRef",
+    label: "Client/Project Ref (auto)",
     type: "text",
     readOnly: true,
   },

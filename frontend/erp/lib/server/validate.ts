@@ -24,6 +24,7 @@ export const SHEET_TYPES = new Set([
   "locations",
   "staff",
   "bills",
+  "clients",
   "audit",
 ]);
 

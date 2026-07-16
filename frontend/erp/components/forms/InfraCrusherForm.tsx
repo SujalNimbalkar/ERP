@@ -31,6 +31,12 @@ import {
   saveMaintenance,
   type VehicleMaintenanceRecord,
 } from "@/lib/vehicleStore";
+import {
+  findClientById,
+  findClientDefaultsByName,
+  getClientOptions,
+  saveClient,
+} from "@/lib/clientStore";
 import type { FieldConfig } from "@/lib/types";
 import { FormField } from "@/components/ui/FormField";
 import { FormSection } from "@/components/ui/FormSection";
@@ -42,7 +48,25 @@ import { useConfirmSave } from "@/components/ui/useConfirmSave";
 
 const TRIP_DETAIL_NAMES = ["date", "vehicleNo", "driverId", "driverName"];
 const CRUSHER_NAMES = ["crusherChallanNo", "materialType", "crusherRate", "crusherBrass", "crusherLocation", "crusherAmount"];
-const SALE_NAMES = ["challanNo", "customerName", "clientLocation", "qtyBrass", "rate", "totalAmount", "difference"];
+const CLIENT_DISPLAY_NAMES = ["customerName", "clientLocation"];
+const SALE_NAMES = ["challanNo", "qtyBrass", "rate", "totalAmount", "difference"];
+
+/** Sentinel option value that reveals the inline "add new client" sub-form. */
+const NEW_CLIENT_OPTION = "__new__";
+
+const NEW_CLIENT_FIELDS: FieldConfig[] = [
+  { name: "name", label: "Client / Company Name", type: "text", required: true, colSpan: 2 },
+  { name: "address", label: "Billing Address", type: "textarea", colSpan: 2 },
+  { name: "gstNo", label: "GST No", type: "text" },
+  { name: "shippingName", label: "Shipping Name", type: "text", placeholder: "Usually same as client name" },
+  { name: "shippingAddress", label: "Shipping Address", type: "textarea", colSpan: 2 },
+  { name: "projectCode", label: "Project Code", type: "text", placeholder: "e.g. HCPL/004" },
+  { name: "projectName", label: "Project Name", type: "text", colSpan: 2 },
+];
+
+function emptyNewClientValues(): Record<string, string> {
+  return Object.fromEntries(NEW_CLIENT_FIELDS.map((f) => [f.name, ""]));
+}
 
 /** Filled in the Diesel category color (blue) — matches the Dashboard's
  * Diesel column and the "Diesel filled?" checkbox above. */
@@ -122,17 +146,26 @@ export function InfraCrusherForm() {
   const [submitting, setSubmitting] = useState(false);
   const [vehicleNoOptions, setVehicleNoOptions] = useState(() => getVehicleNoOptions());
   const [driverOptions, setDriverOptions] = useState(() => getDriverOptions());
+  const [clientOptions, setClientOptions] = useState(() => getClientOptions());
+  const [clientSelectValue, setClientSelectValue] = useState("");
+  const [newClientValues, setNewClientValues] = useState<Record<string, string>>(() =>
+    emptyNewClientValues()
+  );
+  const [savingClient, setSavingClient] = useState(false);
   const { confirmOpen, requestConfirm, confirmSave, cancel, toast, notify, dismissToast } =
     useConfirmSave();
 
   useEffect(() => {
     const syncVehicles = () => setVehicleNoOptions(getVehicleNoOptions());
     const syncDrivers = () => setDriverOptions(getDriverOptions());
+    const syncClients = () => setClientOptions(getClientOptions());
     window.addEventListener("sahyadri-vehicle-update", syncVehicles);
     window.addEventListener("sahyadri-local-update", syncDrivers);
+    window.addEventListener("sahyadri-client-update", syncClients);
     return () => {
       window.removeEventListener("sahyadri-vehicle-update", syncVehicles);
       window.removeEventListener("sahyadri-local-update", syncDrivers);
+      window.removeEventListener("sahyadri-client-update", syncClients);
     };
   }, []);
 
@@ -160,6 +193,7 @@ export function InfraCrusherForm() {
 
   const tripDetailFields = useMemo(() => fieldsByNames(fields, TRIP_DETAIL_NAMES), [fields]);
   const crusherFields = useMemo(() => fieldsByNames(fields, CRUSHER_NAMES), [fields]);
+  const clientDisplayFields = useMemo(() => fieldsByNames(fields, CLIENT_DISPLAY_NAMES), [fields]);
   const saleFields = useMemo(() => fieldsByNames(fields, SALE_NAMES), [fields]);
 
   // Tracks the ref actually persisted via "Save Diesel Fill Now", so the final
@@ -186,6 +220,80 @@ export function InfraCrusherForm() {
       recalcInfraAmounts(applyVehicleLinkedSuggestions({ ...prev, [name]: value }, name, allDieselFills))
     );
     resetStatus();
+  }
+
+  function handleClientSelect(value: string) {
+    setClientSelectValue(value);
+    resetStatus();
+    if (value === NEW_CLIENT_OPTION) return;
+    const client = value ? findClientById(value) : undefined;
+    setValues((prev) =>
+      recalcInfraAmounts({
+        ...prev,
+        clientRef: client?.id ?? "",
+        customerName: client?.name ?? "",
+        clientLocation: client?.shippingAddress ?? "",
+      })
+    );
+  }
+
+  /** Typing an existing client's name prefills the rest from their last
+   * saved row — the same idea as the plant-based customer defaults on the
+   * Cargo Transport billing form. */
+  function handleNewClientChange(name: string, value: string) {
+    setNewClientValues((prev) => {
+      let next = { ...prev, [name]: value };
+      if (name === "name") {
+        const existing = findClientDefaultsByName(value);
+        if (existing) {
+          next = {
+            ...next,
+            address: next.address || existing.address,
+            gstNo: next.gstNo || existing.gstNo,
+            shippingName: next.shippingName || existing.shippingName,
+          };
+        }
+      }
+      return next;
+    });
+    resetStatus();
+  }
+
+  function handleSaveClientNow() {
+    if (!newClientValues.name.trim()) {
+      setStatus("error");
+      setMessage("Enter a client / company name before saving.");
+      return;
+    }
+    setSavingClient(true);
+    resetStatus();
+    try {
+      const saved = saveClient({
+        id: crypto.randomUUID(),
+        name: newClientValues.name.trim(),
+        address: newClientValues.address,
+        gstNo: newClientValues.gstNo,
+        shippingName: newClientValues.shippingName || newClientValues.name.trim(),
+        shippingAddress: newClientValues.shippingAddress,
+        projectCode: newClientValues.projectCode,
+        projectName: newClientValues.projectName,
+        notes: "",
+      });
+      setClientOptions(getClientOptions());
+      setClientSelectValue(saved.id);
+      setValues((prev) =>
+        recalcInfraAmounts({
+          ...prev,
+          clientRef: saved.id,
+          customerName: saved.name,
+          clientLocation: saved.shippingAddress,
+        })
+      );
+      setNewClientValues(emptyNewClientValues());
+      notify(`Client "${saved.name}" saved and selected.`);
+    } finally {
+      setSavingClient(false);
+    }
   }
 
   async function handleSaveDieselFillNow() {
@@ -269,6 +377,8 @@ export function InfraCrusherForm() {
     setMaintenanceSubValues(emptyMaintenanceSubValues());
     setTripExpenseSubValues(emptyTripExpenseSubValues());
     setSavedDieselFillRef(null);
+    setClientSelectValue("");
+    setNewClientValues(emptyNewClientValues());
   }
 
   async function performSave() {
@@ -378,6 +488,11 @@ export function InfraCrusherForm() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     resetStatus();
+    if (!values.clientRef.trim()) {
+      setStatus("error");
+      setMessage("Select or add a Client / Project before saving.");
+      return;
+    }
     requestConfirm(performSave);
   }
 
@@ -404,14 +519,68 @@ export function InfraCrusherForm() {
           ))}
         </FormSection>
 
-        <FormSection title="3. Sale" description="Total Amount auto-calculates from Selling Rate x Qty Brass; Difference is the crusher-to-sale margin." columns={3}>
+        <FormSection
+          title="3. Client / Project"
+          description="Pick a saved client / project, or add a new one — Customer Name and Client Location below fill in automatically."
+          columns={2}
+        >
+          <div className="sm:col-span-2 flex flex-col gap-0.5">
+            <label htmlFor="field-clientSelect" className="text-xs font-medium text-black">
+              Client / Project <span className="text-brand-text"> *</span>
+            </label>
+            <select
+              id="field-clientSelect"
+              value={clientSelectValue}
+              onChange={(e) => handleClientSelect(e.target.value)}
+              className="w-full rounded-md border border-black/15 bg-white px-2.5 py-1.5 text-sm text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30"
+            >
+              <option value="">Select…</option>
+              {clientOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+              <option value={NEW_CLIENT_OPTION}>+ Add New Client / Project</option>
+            </select>
+          </div>
+
+          {clientSelectValue === NEW_CLIENT_OPTION && (
+            <>
+              {NEW_CLIENT_FIELDS.map((field) => (
+                <div key={field.name} className={field.colSpan === 2 ? "sm:col-span-2" : undefined}>
+                  <FormField
+                    field={field}
+                    value={newClientValues[field.name]}
+                    onChange={handleNewClientChange}
+                  />
+                </div>
+              ))}
+              <div className="sm:col-span-2">
+                <button
+                  type="button"
+                  onClick={handleSaveClientNow}
+                  disabled={savingClient}
+                  className="rounded-md bg-brand px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {savingClient ? "Saving…" : "Save Client Now"}
+                </button>
+              </div>
+            </>
+          )}
+
+          {clientDisplayFields.map((field) => (
+            <FormField key={field.name} field={field} value={values[field.name]} onChange={handleChange} />
+          ))}
+        </FormSection>
+
+        <FormSection title="4. Sale" description="Total Amount auto-calculates from Selling Rate x Qty Brass; Difference is the crusher-to-sale margin." columns={3}>
           {saleFields.map((field) => (
             <FormField key={field.name} field={field} value={values[field.name]} onChange={handleChange} />
           ))}
         </FormSection>
 
         <FormSection
-          title="4. Diesel Tank Fill"
+          title="5. Diesel Tank Fill"
           description="Check this if the vehicle's tank was filled on this trip — save it here first so its ref is ready to pick in Trip Expenses below."
           accent="diesel"
         >
@@ -458,7 +627,7 @@ export function InfraCrusherForm() {
         </FormSection>
 
         <FormSection
-          title="5. Trip Expenses"
+          title="6. Trip Expenses"
           description={
             values.dieselFilled === "true"
               ? "Diesel share and toll for this trip — saved as one Trip Expense record for the whole trip, not repeated per line."
@@ -514,7 +683,7 @@ export function InfraCrusherForm() {
         </FormSection>
 
         <FormSection
-          title="6. Vehicle Maintenance"
+          title="7. Vehicle Maintenance"
           description="Check this if maintenance was done on this trip — it creates a Vehicle Maintenance record linked to this vehicle and date."
           accent="maintenance"
         >

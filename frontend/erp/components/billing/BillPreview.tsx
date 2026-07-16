@@ -18,7 +18,9 @@ export type BillData = Omit<SavedBill, "id" | "createdAt">;
 const cell = "border border-black px-2 py-1 align-top";
 const cellRight = `${cell} text-right`;
 
-function CompanyHeader({ bill }: { bill: BillData }) {
+/** Reused as-is by InfraBillPreview.tsx — letterhead rendering is identical
+ * across bill types, generic over `findCompany(bill.companyId)`. */
+export function CompanyHeader({ bill }: { bill: { companyId: string } }) {
   const company = findCompany(bill.companyId);
   if (!company) return null;
   return (

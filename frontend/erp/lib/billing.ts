@@ -40,7 +40,7 @@ export function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-function asNumber(value: string | number | undefined): number {
+export function asNumber(value: string | number | undefined): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
 }
@@ -111,7 +111,7 @@ export function buildRateGroups(lines: BillLineItem[]): RateGroup[] {
     .sort((a, b) => b.amount - a.amount);
 }
 
-export function computeBillTotals(lines: BillLineItem[], gstPercent: number): BillTotals {
+export function computeBillTotals(lines: { amount: number }[], gstPercent: number): BillTotals {
   const subTotal = round2(lines.reduce((sum, line) => sum + line.amount, 0));
   const cgst = round2((subTotal * gstPercent) / 200);
   const sgst = round2((subTotal * gstPercent) / 200);

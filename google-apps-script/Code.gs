@@ -74,6 +74,7 @@ const SHEET_MAP = {
   locations: "Locations",
   staff: "Staff Master",
   bills: "Bills",
+  clients: "Client Companies",
   audit: "Audit Log",
 };
 
@@ -170,6 +171,9 @@ const COLUMN_ORDER = {
     "maintenanceThisTrip",
     // See the "trip-expense" tab below — same reasoning as on the cargo tab.
     "tripExpenseRef",
+    // Reference into the "clients" tab (Client Companies) — appended last so
+    // existing sheet rows keep their column alignment, same rule as above.
+    "clientRef",
   ],
   pallets: [
     "id",
@@ -267,6 +271,21 @@ const COLUMN_ORDER = {
     "role",
     "mobileNumber",
     "rate",
+    "notes",
+    "addedAt",
+    "updatedAt",
+  ],
+  // Client Company + project/site master for Infra & Crusher billing — one
+  // row per client + project combo (a client with two sites is two rows).
+  clients: [
+    "id",
+    "name",
+    "address",
+    "gstNo",
+    "shippingName",
+    "shippingAddress",
+    "projectCode",
+    "projectName",
     "notes",
     "addedAt",
     "updatedAt",

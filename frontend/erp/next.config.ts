@@ -1,6 +1,14 @@
 import type { NextConfig } from "next";
 import path from "path";
 
+// React's dev mode uses eval() for stack-trace reconstruction (never in
+// production builds) — 'unsafe-eval' is only added here for `next dev` so
+// the deployed production CSP is untouched.
+const scriptSrc =
+  process.env.NODE_ENV === "production"
+    ? "script-src 'self' 'unsafe-inline';"
+    : "script-src 'self' 'unsafe-inline' 'unsafe-eval';";
+
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
@@ -16,7 +24,7 @@ const securityHeaders = [
     // fonts.gstatic.com are allowed because next/font/google falls back to
     // loading Geist live instead of self-hosting it under this build.
     value:
-      "default-src 'self'; script-src 'self' 'unsafe-inline'; " +
+      `default-src 'self'; ${scriptSrc} ` +
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
       "img-src 'self' data: blob:; font-src 'self' https://fonts.gstatic.com; " +
       "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",

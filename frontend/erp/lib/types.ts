@@ -18,6 +18,7 @@ export type SheetType =
   | "driver-expense"
   | "ledger"
   | "trip-expense"
+  | "clients"
   | (string & {});
 
 export type FieldType = "text" | "number" | "date" | "select" | "textarea" | "checkbox";
@@ -68,6 +69,7 @@ export type MasterType =
   | "locations"
   | "staff"
   | "bills"
+  | "clients"
   | "audit";
 
 export interface MasterSyncPayload {

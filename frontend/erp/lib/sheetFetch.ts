@@ -3,9 +3,10 @@ import { hasCloudSync } from "./storageMode";
 import { replaceWithSheetRecords } from "./localStore";
 import { replaceWithSheetVehicles } from "./vehicleStore";
 import { replaceWithSheetMaterials } from "./materialStore";
-import { replaceWithSheetBills } from "./billingStore";
+import { replaceWithSheetBills, replaceWithSheetInfraBills } from "./billingStore";
 import { replaceWithSheetLocations } from "./locationStore";
 import { replaceWithSheetStaff } from "./staffStore";
+import { replaceWithSheetClients } from "./clientStore";
 import type { AuditEntry } from "./auditLog";
 import type { SheetType } from "./types";
 
@@ -52,6 +53,7 @@ const TYPE_LABELS: Record<string, string> = {
   bills: "Bills",
   locations: "Plants & Vendors",
   staff: "Staff",
+  clients: "Client Companies",
 };
 
 type SheetRow = Record<string, string | number>;
@@ -114,9 +116,13 @@ export async function refreshFromSheets(): Promise<RefreshResult> {
   }
   if (!missingTypes.has("bills")) {
     replaceWithSheetBills(data["bills"] ?? []);
+    replaceWithSheetInfraBills(data["bills"] ?? []);
   }
   if (!missingTypes.has("staff")) {
     replaceWithSheetStaff(data["staff"] ?? []);
+  }
+  if (!missingTypes.has("clients")) {
+    replaceWithSheetClients(data["clients"] ?? []);
   }
 
   const counts = Object.entries(data)
