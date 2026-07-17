@@ -1,10 +1,23 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { deleteLocalRecord, getLocalRecords, updateLocalRecord } from "@/lib/localStore";
-import { retrySync, syncMasterRecord } from "@/lib/api";
-import { getRecordIdKey, recalcCargoRowAmounts, recalcInfraAmounts } from "@/lib/sheetConfig";
+import {
+  deleteLocalRecord,
+  findRecordsByDocumentNo,
+  getLocalRecords,
+  getLocalRecordsByType,
+  updateLocalRecord,
+} from "@/lib/localStore";
+import { retrySync, submitToSheet, syncMasterRecord, uploadReceiptImage } from "@/lib/api";
+import {
+  buildTripExpenseRef,
+  getRecordIdKey,
+  parseFormData,
+  recalcCargoRowAmounts,
+  recalcInfraAmounts,
+} from "@/lib/sheetConfig";
 import { applyDieselCalc } from "@/lib/dieselUtils";
+import { buildCargoReceiptDataFromRows, captureCargoReceipt } from "@/components/forms/CargoTripReceipt";
 import {
   RECORD_VIEWS,
   downloadCsv,
@@ -77,6 +90,14 @@ export function RecordsView() {
   const [dateSort, setDateSort] = useState<"newest" | "oldest">("newest");
   const [pageSize, setPageSize] = useState<number | "all">(100);
   const [editing, setEditing] = useState<EditState | null>(null);
+  // Cargo rows never carry Diesel Used/Toll+Overload directly (they live on
+  // a linked Trip Expense record, one per trip) — this is only shown/used
+  // when editing a cargo row that has no tripExpenseRef yet, letting a
+  // missed value be added retroactively (see performSaveEdit).
+  const [tripExpenseDraft, setTripExpenseDraft] = useState({
+    dieselUsedThisTrip: "",
+    tollOverloadAmount: "",
+  });
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
   const [auditSearch, setAuditSearch] = useState("");
   const [auditSource, setAuditSource] = useState<"loading" | "sheet" | "local">("local");
@@ -275,15 +296,102 @@ export function RecordsView() {
       record,
       draft: Object.fromEntries(Object.entries(record.data).map(([k, v]) => [k, String(v)])),
     });
+    setTripExpenseDraft({ dieselUsedThisTrip: "", tollOverloadAmount: "" });
   }
 
   function cancelEdit() {
     setEditing(null);
+    setTripExpenseDraft({ dieselUsedThisTrip: "", tollOverloadAmount: "" });
   }
 
-  function performSaveEdit() {
+  /**
+   * Cargo-only follow-up to a saved edit: creates the trip's missing Trip
+   * Expense record if the mini-editor was used (see the render below), then
+   * regenerates and re-uploads the receipt image from every row sharing this
+   * trip's documentNo (not just the one being edited) so the image — and
+   * every sibling material-line row's receiptImageUrl — stays in sync.
+   * Best-effort throughout: any failure here leaves the row's own edit
+   * (already saved by the caller) intact, just without the extra updates.
+   */
+  async function syncCargoTripAfterEdit(
+    editedRecord: LocalRecord,
+    newData: Record<string, string | number>
+  ): Promise<void> {
+    const siblings = findRecordsByDocumentNo(String(newData.documentNo ?? ""), editedRecord.id).filter(
+      (r) => r.type === "cargo"
+    );
+
+    let tripExpenseRef = String(newData.tripExpenseRef ?? "").trim();
+    const hasNewTripExpense =
+      !tripExpenseRef &&
+      (Number(tripExpenseDraft.dieselUsedThisTrip) > 0 || Number(tripExpenseDraft.tollOverloadAmount) > 0);
+
+    if (hasNewTripExpense) {
+      tripExpenseRef = buildTripExpenseRef(String(newData.vehicleNo ?? ""), String(newData.date ?? ""));
+      try {
+        await submitToSheet({
+          type: "trip-expense",
+          data: parseFormData({
+            id: tripExpenseRef,
+            date: String(newData.date ?? ""),
+            vehicleNo: String(newData.vehicleNo ?? ""),
+            driverId: String(newData.driverId ?? ""),
+            driverName: String(newData.driverName ?? ""),
+            source: "cargo",
+            documentNos: String(newData.documentNo ?? ""),
+            ...tripExpenseDraft,
+          }),
+        });
+        newData.tripExpenseRef = tripExpenseRef;
+        for (const sibling of siblings) {
+          const siblingData = { ...sibling.data, tripExpenseRef };
+          updateLocalRecord(sibling.id, siblingData);
+          void syncMasterRecord({ type: "cargo", action: "upsert", data: siblingData });
+        }
+      } catch (err) {
+        console.warn("syncCargoTripAfterEdit: creating the Trip Expense record failed:", err);
+        tripExpenseRef = "";
+      }
+    }
+
+    const linkedExpense = tripExpenseRef
+      ? getLocalRecordsByType("trip-expense").find((r) => String(r.data.id ?? "") === tripExpenseRef)
+      : undefined;
+
+    try {
+      const receiptData = buildCargoReceiptDataFromRows([{ ...editedRecord, data: newData }, ...siblings], {
+        dieselFillRef: String(newData.dieselFillRef ?? "") || undefined,
+        dieselUsedThisTrip:
+          tripExpenseDraft.dieselUsedThisTrip || String(linkedExpense?.data.dieselUsedThisTrip ?? "") || undefined,
+        tollOverloadAmount:
+          tripExpenseDraft.tollOverloadAmount || String(linkedExpense?.data.tollOverloadAmount ?? "") || undefined,
+      });
+      const dataUrl = await captureCargoReceipt(receiptData);
+      const url = await uploadReceiptImage(
+        dataUrl,
+        `receipt-${newData.vehicleNo || "trip"}-${newData.date || Date.now()}.jpg`
+      );
+      if (url) {
+        newData.receiptImageUrl = url;
+        for (const sibling of siblings) {
+          const siblingData = { ...sibling.data, receiptImageUrl: url };
+          updateLocalRecord(sibling.id, siblingData);
+          void syncMasterRecord({ type: "cargo", action: "upsert", data: siblingData });
+        }
+      }
+    } catch (err) {
+      console.warn("syncCargoTripAfterEdit: receipt regeneration failed:", err);
+    }
+  }
+
+  async function performSaveEdit() {
     if (!editing) return;
     const newData = parseEditedData(editing.draft);
+
+    if (editing.record.type === "cargo") {
+      await syncCargoTripAfterEdit(editing.record, newData);
+    }
+
     appendAuditEntry({
       action: "edit",
       recordId: editing.record.id,
@@ -302,6 +410,7 @@ export function RecordsView() {
     }
 
     setEditing(null);
+    setTripExpenseDraft({ dieselUsedThisTrip: "", tollOverloadAmount: "" });
     refreshAudit();
     notify("Record updated.");
   }
@@ -697,6 +806,44 @@ export function RecordsView() {
                   </div>
                 ))}
               </div>
+
+              {editing.record.type === "cargo" && !editing.draft.tripExpenseRef && (
+                <div className="mt-3 rounded-md border border-l-4 border-black/10 border-l-diesel bg-diesel/5 p-3">
+                  <p className="mb-2 text-xs font-semibold text-black">
+                    Missed Diesel Used / Toll + Overload?
+                  </p>
+                  <p className="mb-2 text-xs text-black">
+                    This trip has no linked Trip Expense record yet. Fill in either value and
+                    save to create one — it will also regenerate this trip&apos;s receipt image.
+                  </p>
+                  <div className="grid gap-x-4 gap-y-2 sm:grid-cols-2">
+                    <div className="flex flex-col gap-0.5">
+                      <label className="text-xs font-medium text-black">
+                        Diesel Used This Trip (Rs)
+                      </label>
+                      <input
+                        type="number"
+                        value={tripExpenseDraft.dieselUsedThisTrip}
+                        onChange={(e) =>
+                          setTripExpenseDraft((prev) => ({ ...prev, dieselUsedThisTrip: e.target.value }))
+                        }
+                        className="rounded-md border border-black/15 bg-white px-2 py-1 text-xs text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <label className="text-xs font-medium text-black">Toll + Overload (Rs)</label>
+                      <input
+                        type="number"
+                        value={tripExpenseDraft.tollOverloadAmount}
+                        onChange={(e) =>
+                          setTripExpenseDraft((prev) => ({ ...prev, tollOverloadAmount: e.target.value }))
+                        }
+                        className="rounded-md border border-black/15 bg-white px-2 py-1 text-xs text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -766,13 +913,26 @@ export function RecordsView() {
                         </td>
                         {activeView.columns.map((col) => {
                           const value = getCellValue(record, col.key);
+                          const isUrl = /^https?:\/\//.test(value);
                           return (
                             <td
                               key={`${record.id}-${col.key}`}
                               className="max-w-55 truncate border-r border-black/10 px-3 py-2 text-xs last:border-r-0"
                               title={value || undefined}
                             >
-                              {value || "—"}
+                              {isUrl ? (
+                                <a
+                                  href={value}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="text-brand-text underline"
+                                >
+                                  {value}
+                                </a>
+                              ) : (
+                                value || "—"
+                              )}
                             </td>
                           );
                         })}

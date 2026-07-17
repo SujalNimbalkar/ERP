@@ -369,6 +369,15 @@ export const CARGO_SECTIONS: FieldSection[] = [
         type: "text",
         readOnly: true,
       },
+      // Drive link to a receipt image auto-captured from the Confirm & Save
+      // dialog — blank when capture/upload failed or hasn't happened yet
+      // (see performSave() in CargoTransportForm.tsx).
+      {
+        name: "receiptImageUrl",
+        label: "Receipt Image (auto)",
+        type: "text",
+        readOnly: true,
+      },
     ],
   },
   {

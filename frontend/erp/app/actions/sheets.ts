@@ -28,6 +28,7 @@ export type ListResult = {
 };
 
 export type MutationResult = { success: boolean; message: string };
+export type UploadResult = { success: boolean; url?: string; message?: string };
 
 const NOT_CONFIGURED: MutationResult = {
   success: false,
@@ -38,6 +39,11 @@ const FAILED: MutationResult = {
   success: false,
   message: "Google Sheets request failed.",
 };
+
+const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
+// ~1.5MB decoded — generous for a text/table dialog screenshot, base64
+// inflates that to roughly this many characters.
+const MAX_IMAGE_BASE64_LENGTH = 2_000_000;
 
 function listTags(types?: string[]): string[] {
   return types && types.length
@@ -132,5 +138,40 @@ export async function deleteRow(type: string, id: string): Promise<MutationResul
   } catch (err) {
     console.error("deleteRow failed:", err);
     return FAILED;
+  }
+}
+
+/**
+ * Uploads a receipt image (auto-captured from the Cargo Confirm & Save
+ * dialog) to Google Drive via Apps Script — not a sheet row, so it bypasses
+ * isValidType/isFlatRecord and gets its own small validation instead.
+ * Best-effort by design: callers treat a failure here as "no image this
+ * time," never as a reason to block the trip save itself.
+ */
+export async function uploadTripReceipt(
+  base64Data: string,
+  filename: string,
+  mimeType: string
+): Promise<UploadResult> {
+  if (!gasConfigured()) return { success: false, message: "Google Sheets is not configured." };
+  if (
+    !ALLOWED_IMAGE_MIME_TYPES.has(mimeType) ||
+    typeof base64Data !== "string" ||
+    base64Data.length === 0 ||
+    base64Data.length > MAX_IMAGE_BASE64_LENGTH
+  ) {
+    return { success: false, message: "Invalid image." };
+  }
+  try {
+    const result = await gasPost<UploadResult>({
+      action: "uploadImage",
+      base64Data,
+      filename,
+      mimeType,
+    });
+    return { success: !!result.success, url: result.url, message: result.message };
+  } catch (err) {
+    console.error("uploadTripReceipt failed:", err);
+    return { success: false, message: "Upload failed." };
   }
 }

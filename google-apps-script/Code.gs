@@ -45,9 +45,58 @@ function isAuthorized_(suppliedToken) {
   return diff === 0;
 }
 
-/** Hard limits on write requests — quota/flooding protection. */
+/** Hard limits on write requests — quota/flooding protection. Large enough
+ * for a base64-encoded receipt image (~1.5MB decoded inflates to ~2MB as
+ * base64) on top of normal row payloads. */
 const MAX_BATCH_RECORDS = 200;
-const MAX_BODY_BYTES = 500000;
+const MAX_BODY_BYTES = 2000000;
+
+/** Receipt images auto-captured from Cargo's Confirm & Save dialog — saved
+ * to Drive (Sheets cells can't hold files) via the "uploadImage" action,
+ * not through the SHEET_MAP/COLUMN_ORDER row machinery below since it's a
+ * binary blob, not a sheet row. */
+const RECEIPT_DRIVE_FOLDER_NAME = "Sahyadri ERP Trip Receipts";
+const ALLOWED_IMAGE_MIME_TYPES = ["image/jpeg", "image/png"];
+
+function getOrCreateFolder_(name) {
+  const folders = DriveApp.getFoldersByName(name);
+  if (folders.hasNext()) return folders.next();
+  return DriveApp.createFolder(name);
+}
+
+/** Decodes and saves a base64 image to Drive, sharing it "anyone with the
+ * link can view" so the stored URL opens directly without per-user access
+ * grants — fine for internal trip data (vehicle/driver/material/amounts),
+ * not sensitive PII. Returns { success, url } or { success: false, message }. */
+function handleUploadImage_(payload) {
+  const mimeType = payload.mimeType;
+  const base64Data = payload.base64Data;
+  if (ALLOWED_IMAGE_MIME_TYPES.indexOf(mimeType) === -1 || typeof base64Data !== "string" || !base64Data) {
+    return { success: false, message: "Invalid image" };
+  }
+  try {
+    const bytes = Utilities.base64Decode(base64Data);
+    const filename = payload.filename || "receipt-" + Date.now() + ".jpg";
+    const blob = Utilities.newBlob(bytes, mimeType, filename);
+    const folder = getOrCreateFolder_(RECEIPT_DRIVE_FOLDER_NAME);
+    const file = folder.createFile(blob);
+    // Sharing is best-effort and kept separate from file creation: some
+    // Workspace accounts have an admin policy that blocks "anyone with the
+    // link" external sharing outright, which would otherwise throw here and
+    // discard a file that was already successfully created. If it fails,
+    // the file (and its URL) still exists — just only openable by whoever
+    // already has folder access, not link-only.
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch (sharingErr) {
+      console.error("uploadImage: setSharing failed (file still created): " + (sharingErr && sharingErr.stack ? sharingErr.stack : sharingErr));
+    }
+    return { success: true, url: file.getUrl() };
+  } catch (err) {
+    console.error("uploadImage failed: " + (err && err.stack ? err.stack : err));
+    return { success: false, message: "Upload failed" };
+  }
+}
 
 const SHEET_MAP = {
   // NOTE: "cargo" (below) is the live, unified Cargo Transport tab used by the
@@ -122,7 +171,15 @@ const CARGO_BASE_COLUMNS = [
  * (toll/diesel-used amounts live there now, one row per trip, instead of
  * repeating inline on every material-line row here — see the "trip-expense"
  * tab below). */
-const CARGO_MARKER_COLUMNS = ["dieselFilled", "maintenanceThisTrip", "tripExpenseRef"];
+const CARGO_MARKER_COLUMNS = [
+  "dieselFilled",
+  "maintenanceThisTrip",
+  "tripExpenseRef",
+  // Drive link to a receipt image auto-captured from the Confirm & Save
+  // dialog (see the "uploadImage" action below) — blank when capture/upload
+  // failed or hasn't happened yet (older rows, or a redeploy still pending).
+  "receiptImageUrl",
+];
 
 const CARGO_COLUMNS = CARGO_BASE_COLUMNS.concat(CARGO_MARKER_COLUMNS);
 
@@ -583,6 +640,10 @@ function doPost(e) {
 
     if (action === "list") {
       return jsonResponse(listData_(payload.type));
+    }
+
+    if (action === "uploadImage") {
+      return jsonResponse(handleUploadImage_(payload));
     }
 
     const type = payload.type;

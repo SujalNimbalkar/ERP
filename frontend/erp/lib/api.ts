@@ -1,5 +1,5 @@
 import type { ApiResponse, LocalRecord, MasterSyncPayload, SubmitPayload } from "./types";
-import { appendRows, deleteRow, upsertRow } from "@/app/actions/sheets";
+import { appendRows, deleteRow, upsertRow, uploadTripReceipt } from "@/app/actions/sheets";
 import { appendAuditEntry } from "./auditLog";
 import { hasCloudSync } from "./storageMode";
 import { markRecordsSynced, saveLocalRecord, saveLocalRecords } from "./localStore";
@@ -124,5 +124,32 @@ export async function syncMasterRecord(
     }
   } catch {
     // intentional no-op — localStorage is the primary store
+  }
+}
+
+/**
+ * Uploads a captured receipt image (data URL) to Drive — best-effort, never
+ * throws. Returns "" on any failure (not configured, network error, GAS not
+ * yet redeployed with the uploadImage action) so callers can just fold the
+ * result straight into a row's receiptImageUrl field.
+ */
+export async function uploadReceiptImage(dataUrl: string, filename: string): Promise<string> {
+  if (typeof window === "undefined" || !hasCloudSync()) return "";
+  const match = /^data:([^;]+);base64,(.*)$/.exec(dataUrl);
+  if (!match) {
+    console.warn("uploadReceiptImage: captured data URL didn't match the expected data:<mime>;base64,<data> shape");
+    return "";
+  }
+  const [, mimeType, base64Data] = match;
+  try {
+    const result = await uploadTripReceipt(base64Data, filename, mimeType);
+    if (!result.success || !result.url) {
+      console.warn("uploadReceiptImage: upload failed —", result.message || "no message from server");
+      return "";
+    }
+    return result.url;
+  } catch (err) {
+    console.warn("uploadReceiptImage: threw —", err);
+    return "";
   }
 }

@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { FieldConfig, FieldSection } from "@/lib/types";
-import { submitToSheet } from "@/lib/api";
+import { submitToSheet, uploadReceiptImage } from "@/lib/api";
+import {
+  CargoTripReceipt,
+  captureCargoReceipt,
+  type CargoReceiptData,
+} from "@/components/forms/CargoTripReceipt";
 import {
   CARGO_FIELDS,
   CARGO_SECTIONS,
@@ -265,7 +270,8 @@ function getTotalTripWeight(invoices: InvoiceValues[]): number {
 function buildCargoPayloads(
   values: Record<string, string>,
   invoices: InvoiceValues[],
-  tripExpenseRef: string
+  tripExpenseRef: string,
+  receiptImageUrl: string
 ): Record<string, string | number>[] {
   const weighted = recalculateLineWeights(invoices);
   const totalTripWeight = getTotalTripWeight(weighted);
@@ -289,6 +295,9 @@ function buildCargoPayloads(
         // (same idea as dieselFillRef). The actual toll/diesel-used amounts
         // live once on the linked Trip Expense record, not here.
         tripExpenseRef,
+        // Drive link to the auto-captured Confirm & Save receipt — same
+        // "safe to repeat per row" reference, blank if capture/upload failed.
+        receiptImageUrl,
         plantType: invoice.fromType,
         fromLocation: fromLabel,
         toParty: invoice.toParty,
@@ -380,16 +389,6 @@ function applyDriverSuggestion(
     }
   }
   return values;
-}
-
-function ReviewRow({ label, value }: { label: string; value?: string }) {
-  if (!value?.trim()) return null;
-  return (
-    <div className="flex gap-2 text-xs text-black">
-      <span className="w-32 shrink-0 font-medium">{label}</span>
-      <span>{value}</span>
-    </div>
-  );
 }
 
 export function CargoTransportForm() {
@@ -732,6 +731,42 @@ export function CargoTransportForm() {
     setMessage("");
   }
 
+  /** Builds the review/receipt data from live form state — used both for
+   * the Confirm dialog's visible review and (via captureCargoReceipt) for
+   * the auto-captured receipt image, so the two never show different data. */
+  function buildLiveCargoReceiptData(): CargoReceiptData {
+    return {
+      billingCompanyLabel: companyName(values.billingCompany),
+      vehicleNo: values.vehicleNo,
+      lrNo: values.lrNo,
+      driverLabel: values.driverName || values.driverId,
+      invoices: weightedInvoices.map((invoice) => ({
+        documentNo: invoice.documentNo,
+        date: invoice.date,
+        receivedDate: invoice.receivedDate,
+        routeLabel: `${
+          cargoSources.find((s) => s.type === invoice.fromType)?.label ?? invoice.fromType
+        } → ${invoice.toParty}`,
+        lines: invoice.lines.map((line) => ({
+          materialCode: line.materialCode,
+          materialDescription: line.materialDescription,
+          quantity: line.quantity,
+          uom: line.uom,
+          totalWt: line.totalWt,
+          receivedQty: line.receivedQty,
+        })),
+      })),
+      totalWeightLabel: `${Math.round(totalTripWeight * 1000) / 1000} kg`,
+      rateLabel: summaryRateDisplay
+        ? `${summaryRateDisplay.rate}${summaryRateDisplay.tier ? ` (${summaryRateDisplay.tier})` : ""}`
+        : undefined,
+      amountLabel: `Rs ${Math.round(totalTransportAmount * 100) / 100}`,
+      dieselFillRef: values.dieselFillRef,
+      dieselUsedThisTrip: tripExpenseSubValues.dieselUsedThisTrip,
+      tollOverloadAmount: tripExpenseSubValues.tollOverloadAmount,
+    };
+  }
+
   async function performSave() {
     setSubmitting(true);
 
@@ -764,7 +799,24 @@ export function CargoTransportForm() {
         });
       }
 
-      const records = buildCargoPayloads(values, invoices, tripExpenseRef);
+      // Best-effort: a capture/upload failure never blocks the trip save —
+      // it just means this trip's receiptImageUrl stays blank. Captures an
+      // independent, off-screen render (captureCargoReceipt) rather than
+      // screenshotting the live dialog, so there's no dependency on the
+      // dialog still being mounted at this point.
+      let receiptImageUrl = "";
+      try {
+        const dataUrl = await captureCargoReceipt(buildLiveCargoReceiptData());
+        receiptImageUrl = await uploadReceiptImage(
+          dataUrl,
+          `receipt-${values.vehicleNo || "trip"}-${fillDate || Date.now()}.jpg`
+        );
+      } catch (err) {
+        console.warn("Receipt capture/upload failed (trip will still save):", err);
+      }
+      console.info("performSave: receiptImageUrl =", receiptImageUrl || "(blank)");
+
+      const records = buildCargoPayloads(values, invoices, tripExpenseRef, receiptImageUrl);
 
       const result = await submitToSheet({
         type: "cargo",
@@ -843,6 +895,17 @@ export function CargoTransportForm() {
     notify("Entry deleted — form cleared.", "error");
   }
 
+  /**
+   * Captures the review dialog as an image *before* handing off to
+   * confirmSave — confirmSave clears the pending action (and so unmounts
+   * the dialog) before awaiting it, so capturing inside performSave itself
+   * would be racy. Uses html-to-image (SVG+foreignObject, rasterized by the
+   * browser itself) rather than html2canvas — html2canvas hand-parses CSS
+   * and can't handle the oklch/oklab colors Tailwind v4 generates, so it
+   * threw on every capture; html-to-image has no such parser to trip over.
+   * Capture failures are swallowed here (best-effort, per the plan): a
+   * missing screenshot never blocks the save.
+   */
   function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     setStatus("idle");
@@ -1253,92 +1316,7 @@ export function CargoTransportForm() {
         onCancel={cancel}
         onDelete={handleDiscard}
       >
-        <div className="space-y-3">
-          <div>
-            <p className="mb-1 text-xs font-semibold text-black">Trip Details</p>
-            <ReviewRow label="Billing Company" value={companyName(values.billingCompany)} />
-            <ReviewRow label="Vehicle No." value={values.vehicleNo} />
-            <ReviewRow label="L.R. No." value={values.lrNo} />
-            <ReviewRow
-              label="Driver"
-              value={values.driverName || values.driverId}
-            />
-          </div>
-
-          {weightedInvoices.map((invoice, index) => (
-            <div key={invoice.id}>
-              <p className="mb-1 text-xs font-semibold text-black">
-                Invoice {index + 1} — {invoice.documentNo || "(no number)"}
-                {invoice.date ? `, ${invoice.date}` : ""}
-                {invoice.receivedDate ? ` · received ${invoice.receivedDate}` : ""}
-              </p>
-              <ReviewRow
-                label="Route"
-                value={`${
-                  cargoSources.find((s) => s.type === invoice.fromType)?.label ?? invoice.fromType
-                } → ${invoice.toParty}`}
-              />
-              <div className="overflow-hidden rounded-md border border-black/10">
-                <table className="w-full border-collapse text-xs text-black">
-                  <thead>
-                    <tr className="bg-page">
-                      <th className="px-1.5 py-1 text-left font-semibold">Material</th>
-                      <th className="px-1.5 py-1 text-right font-semibold">Qty</th>
-                      <th className="px-1.5 py-1 text-right font-semibold">Weight (kg)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {invoice.lines.map((line) => (
-                      <tr key={line.id} className="border-t border-black/10">
-                        <td className="px-1.5 py-1">
-                          {line.materialCode}
-                          {line.materialDescription ? ` — ${line.materialDescription}` : ""}
-                        </td>
-                        <td className="px-1.5 py-1 text-right">
-                          {line.quantity} {line.uom}
-                          {line.receivedQty ? ` (recd ${line.receivedQty})` : ""}
-                        </td>
-                        <td className="px-1.5 py-1 text-right">
-                          {line.totalWt || "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))}
-
-          <div>
-            <p className="mb-1 text-xs font-semibold text-black">Transport</p>
-            <ReviewRow
-              label="Total Weight"
-              value={`${Math.round(totalTripWeight * 1000) / 1000} kg`}
-            />
-            {summaryRateDisplay && (
-              <ReviewRow
-                label="Rate"
-                value={`${summaryRateDisplay.rate}${summaryRateDisplay.tier ? ` (${summaryRateDisplay.tier})` : ""}`}
-              />
-            )}
-            <ReviewRow
-              label="Amount"
-              value={`Rs ${Math.round(totalTransportAmount * 100) / 100}`}
-            />
-          </div>
-
-          {(values.dieselFillRef ||
-            tripExpenseSubValues.dieselUsedThisTrip ||
-            tripExpenseSubValues.tollOverloadAmount) && (
-            <div>
-              <p className="mb-1 text-xs font-semibold text-black">Expenses</p>
-              <ReviewRow label="Diesel Fill Ref" value={values.dieselFillRef} />
-              <ReviewRow label="Diesel Used (Rs)" value={tripExpenseSubValues.dieselUsedThisTrip} />
-              <ReviewRow label="Toll + Overload (Rs)" value={tripExpenseSubValues.tollOverloadAmount} />
-            </div>
-          )}
-
-        </div>
+        <CargoTripReceipt data={buildLiveCargoReceiptData()} />
       </ConfirmDialog>
       {toast && (
         <Toast message={toast.message} type={toast.type} onClose={dismissToast} />
