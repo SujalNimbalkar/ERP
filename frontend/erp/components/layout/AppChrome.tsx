@@ -7,6 +7,7 @@ import { MODULES } from "@/lib/sheetConfig";
 import { getLastSheetFetch } from "@/lib/sheetFetch";
 import { refreshModuleData, staleModuleTypes } from "@/lib/moduleData";
 import { LocalDataPanel } from "@/components/layout/LocalDataPanel";
+import { LoadingAnimation } from "@/components/ui/LoadingAnimation";
 import { hasCloudSync, setCloudSyncFlag } from "@/lib/storageMode";
 import { migrateLegacyCargoRecords } from "@/lib/localStore";
 import { logout } from "@/app/actions/auth";
@@ -143,6 +144,7 @@ export function AppChrome({
       <main className="flex-1 overflow-y-auto bg-page p-3 sm:p-5 md:p-8">
         {sheetLoad === "loading" && (
           <div className="rounded-lg border border-black/10 bg-white px-6 py-10 text-center shadow-sm">
+            <LoadingAnimation size={220} />
             <p className="text-base font-semibold text-black">
               Loading data from Google Sheets…
             </p>

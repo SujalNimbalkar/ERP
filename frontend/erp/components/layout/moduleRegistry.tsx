@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import type { ComponentType } from "react";
+import { LoadingAnimation } from "@/components/ui/LoadingAnimation";
 
 /**
  * One lazy, client-only chunk per module. Every module component reads
@@ -12,9 +13,10 @@ import type { ComponentType } from "react";
  */
 
 const loading = () => (
-  <p className="rounded-md border border-black/10 bg-white px-4 py-3 text-sm text-black/60 shadow-sm">
-    Loading module…
-  </p>
+  <div className="rounded-md border border-black/10 bg-white px-4 py-6 text-center shadow-sm">
+    <LoadingAnimation size={150} />
+    <p className="text-sm text-black/60">Loading module…</p>
+  </div>
 );
 
 const MODULE_COMPONENTS: Record<string, ComponentType> = {
