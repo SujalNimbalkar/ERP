@@ -9,14 +9,20 @@ import animationData from "./loadingAnimation.json";
  * no CDN script or remote animation fetch is needed and the strict CSP
  * stays intact. Decorative only — pair it with visible loading text.
  */
-export function LoadingAnimation({ size = 180 }: { size?: number }) {
+export function LoadingAnimation({
+  size = 180,
+  className = "mx-auto",
+}: {
+  size?: number;
+  className?: string;
+}) {
   return (
     <Lottie
       animationData={animationData}
       loop
       autoplay
       style={{ width: size, height: size }}
-      className="mx-auto"
+      className={className}
       aria-hidden
     />
   );

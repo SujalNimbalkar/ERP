@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import type { ComponentType } from "react";
-import { LoadingAnimation } from "@/components/ui/LoadingAnimation";
+import { LoadingCard } from "@/components/ui/LoadingCard";
 
 /**
  * One lazy, client-only chunk per module. Every module component reads
@@ -12,12 +12,7 @@ import { LoadingAnimation } from "@/components/ui/LoadingAnimation";
  * into its own chunk, so visiting a route loads only that module's code.
  */
 
-const loading = () => (
-  <div className="rounded-md border border-black/10 bg-white px-4 py-6 text-center shadow-sm">
-    <LoadingAnimation size={150} />
-    <p className="text-sm text-black/60">Loading module…</p>
-  </div>
-);
+const loading = () => <LoadingCard />;
 
 const MODULE_COMPONENTS: Record<string, ComponentType> = {
   dashboard: dynamic(

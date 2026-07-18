@@ -7,7 +7,7 @@ import { MODULES } from "@/lib/sheetConfig";
 import { getLastSheetFetch } from "@/lib/sheetFetch";
 import { refreshModuleData, staleModuleTypes } from "@/lib/moduleData";
 import { LocalDataPanel } from "@/components/layout/LocalDataPanel";
-import { LoadingAnimation } from "@/components/ui/LoadingAnimation";
+import { LoadingCard } from "@/components/ui/LoadingCard";
 import { hasCloudSync, setCloudSyncFlag } from "@/lib/storageMode";
 import { migrateLegacyCargoRecords } from "@/lib/localStore";
 import { logout } from "@/app/actions/auth";
@@ -100,7 +100,10 @@ export function AppChrome({
     setSheetLoad((prev) => (prev === "loading" || prev === "error" ? prev : "refreshing"));
   };
 
-  const blocked = sheetLoad === "loading" || sheetLoad === "error";
+  // "refreshing" also hides the module now: every sync — first run or not —
+  // presents the same single animation card until the fetch completes.
+  const blocked =
+    sheetLoad === "loading" || sheetLoad === "error" || sheetLoad === "refreshing";
 
   // Shared by the desktop sidebar nav and the mobile drawer.
   const moduleLinks = MODULES.map((mod) => {
@@ -252,17 +255,7 @@ export function AppChrome({
       </aside>
 
       <main className="flex-1 overflow-y-auto bg-page p-3 sm:p-5 md:p-8">
-        {sheetLoad === "loading" && (
-          <div className="rounded-lg border border-black/10 bg-white px-6 py-10 text-center shadow-sm">
-            <LoadingAnimation size={220} />
-            <p className="text-base font-semibold text-black">
-              Loading data from Google Sheets…
-            </p>
-            <p className="mt-2 text-sm text-black/60">
-              All data comes from the spreadsheet — one moment.
-            </p>
-          </div>
-        )}
+        {(sheetLoad === "loading" || sheetLoad === "refreshing") && <LoadingCard />}
         {sheetLoad === "error" && (
           <div className="rounded-lg border-l-4 border-critical bg-white px-6 py-10 text-center shadow-sm">
             <p className="text-base font-semibold text-black">
@@ -289,11 +282,6 @@ export function AppChrome({
               </button>
             </div>
           </div>
-        )}
-        {sheetLoad === "refreshing" && (
-          <p className="mb-4 rounded-md border-l-4 border-brand bg-brand-tint px-4 py-2 text-sm text-black">
-            Syncing with Google Sheets…
-          </p>
         )}
         {sheetLoad === "stale-error" && (
           <p className="mb-4 rounded-md border-l-4 border-critical bg-critical-tint px-4 py-2 text-sm text-black">
