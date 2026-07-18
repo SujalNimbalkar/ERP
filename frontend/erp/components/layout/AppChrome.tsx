@@ -54,6 +54,15 @@ export function AppChrome({
   });
   const [sheetMessage, setSheetMessage] = useState("");
   const [fetchAttempt, setFetchAttempt] = useState(0);
+  // Mobile-only chrome: hamburger drawer with the module list, and the
+  // profile dropdown on the right. Both are irrelevant at md+ (sidebar).
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+
+  useEffect(() => {
+    setMobileNavOpen(false);
+    setProfileOpen(false);
+  }, [pathname]);
 
   // Runs once, unconditionally (even without cloud sync configured) — any
   // localStorage rows still under the old per-plant Cargo types get rewritten
@@ -93,47 +102,148 @@ export function AppChrome({
 
   const blocked = sheetLoad === "loading" || sheetLoad === "error";
 
+  // Shared by the desktop sidebar nav and the mobile drawer.
+  const moduleLinks = MODULES.map((mod) => {
+    const active = moduleId === mod.id;
+    return (
+      <Link
+        key={mod.id}
+        href={`/${mod.id}`}
+        onClick={() => {
+          markSyncingIfStale(mod.id);
+          setMobileNavOpen(false);
+        }}
+        className={`mb-0.5 w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
+          active
+            ? "border-l-[3px] border-brand bg-brand-tint pl-2.5 font-semibold text-brand-text"
+            : "font-normal text-black hover:bg-black/5"
+        }`}
+      >
+        {mod.label}
+      </Link>
+    );
+  });
+
   return (
     <div className="flex min-h-full flex-1 flex-col bg-page text-black md:flex-row">
       <aside className="flex w-full shrink-0 flex-col border-b border-black/10 bg-white shadow-sm md:w-56 md:border-b-0 md:border-r">
-        <div className="border-b border-black/10 px-4 py-2.5 md:py-5">
-          <h1 className="text-base font-semibold text-black">Sahyadri ERP</h1>
+        <div className="flex items-center gap-2 border-b border-black/10 px-3 py-2.5 md:block md:px-4 md:py-5">
+          <button
+            type="button"
+            onClick={() => {
+              setMobileNavOpen(true);
+              setProfileOpen(false);
+            }}
+            aria-label="Open menu"
+            aria-expanded={mobileNavOpen}
+            className="rounded-md p-1.5 text-black transition-colors hover:bg-black/5 md:hidden"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            >
+              <path d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <h1 className="flex-1 text-base font-semibold text-black md:flex-none">
+            Sahyadri ERP
+          </h1>
           <p className="mt-0.5 hidden text-xs text-black/60 md:block">Transport & Logistics</p>
+          {sessionEmail && (
+            <div className="relative md:hidden">
+              <button
+                type="button"
+                onClick={() => {
+                  setProfileOpen((open) => !open);
+                  setMobileNavOpen(false);
+                }}
+                aria-label="Account"
+                aria-expanded={profileOpen}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-tint text-sm font-semibold text-brand-text"
+              >
+                {sessionEmail[0].toUpperCase()}
+              </button>
+              {profileOpen && (
+                <div className="absolute right-0 top-full z-20 mt-1 w-60 rounded-md border border-black/10 bg-white p-3 shadow-lg">
+                  <p className="truncate text-xs text-black/60" title={sessionEmail}>
+                    {sessionEmail}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => logout()}
+                    className="mt-2 text-xs font-semibold text-brand-text underline"
+                  >
+                    Sign out
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        <nav className="flex flex-row overflow-x-auto p-1.5 md:flex-1 md:flex-col md:p-2">
-          {MODULES.map((mod) => {
-            const active = moduleId === mod.id;
-            return (
-              <Link
-                key={mod.id}
-                href={`/${mod.id}`}
-                onClick={() => markSyncingIfStale(mod.id)}
-                className={`shrink-0 whitespace-nowrap rounded-md px-3 py-2 text-left text-sm transition-colors md:mb-0.5 md:w-full ${
-                  active
-                    ? "border-l-[3px] border-brand bg-brand-tint pl-2.5 font-semibold text-brand-text md:border-l-[3px]"
-                    : "font-normal text-black hover:bg-black/5"
-                }`}
+        <nav className="hidden flex-col p-2 md:flex md:flex-1">{moduleLinks}</nav>
+
+        {/* Mobile drawer: slides in from the left over the page instead of
+            pushing content down. Stays mounted so the transform animates;
+            pointer-events are cut while closed. */}
+        <div
+          className={`fixed inset-0 z-40 md:hidden ${
+            mobileNavOpen ? "" : "pointer-events-none"
+          }`}
+          aria-hidden={!mobileNavOpen}
+        >
+          <div
+            onClick={() => setMobileNavOpen(false)}
+            className={`absolute inset-0 bg-black/40 transition-opacity duration-300 ${
+              mobileNavOpen ? "opacity-100" : "opacity-0"
+            }`}
+          />
+          <div
+            className={`absolute left-0 top-0 flex h-full w-72 max-w-[85vw] flex-col bg-white shadow-xl transition-transform duration-300 ${
+              mobileNavOpen ? "translate-x-0" : "-translate-x-full"
+            }`}
+          >
+            <div className="flex items-center justify-between border-b border-black/10 px-4 py-3">
+              <h2 className="text-base font-semibold text-black">Sahyadri ERP</h2>
+              <button
+                type="button"
+                onClick={() => setMobileNavOpen(false)}
+                aria-label="Close menu"
+                className="rounded-md p-1.5 text-black transition-colors hover:bg-black/5"
               >
-                {mod.label}
-              </Link>
-            );
-          })}
-        </nav>
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                >
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            </div>
+            <nav className="flex flex-1 flex-col overflow-y-auto p-2">{moduleLinks}</nav>
+          </div>
+        </div>
 
         <div className="hidden md:block">
           <LocalDataPanel />
         </div>
 
         {sessionEmail && (
-          <div className="flex items-center justify-between gap-2 border-t border-black/10 px-4 py-2 md:block md:py-3">
+          <div className="hidden border-t border-black/10 px-4 py-3 md:block">
             <p className="min-w-0 truncate text-xs text-black/60" title={sessionEmail}>
               {sessionEmail}
             </p>
             <button
               type="button"
               onClick={() => logout()}
-              className="shrink-0 text-xs font-semibold text-brand-text underline md:mt-1"
+              className="mt-1 shrink-0 text-xs font-semibold text-brand-text underline"
             >
               Sign out
             </button>

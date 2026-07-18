@@ -185,10 +185,10 @@ export function DashboardView() {
     <div className="max-w-6xl">
       <div className="mb-4">
         <h2 className="text-xl font-semibold text-black">Dashboard</h2>
-        <p className="mt-1 text-sm text-black">
+        {/* <p className="mt-1 text-sm text-black">
           Vehicle earnings vs costs, trips, driver costs and monthly transportation
           profit / loss — computed from all saved records.
-        </p>
+        </p> */}
       </div>
 
       <div className="mb-4 grid grid-cols-2 gap-2 border border-black p-3 sm:grid-cols-3 lg:grid-cols-6">

@@ -34,6 +34,20 @@ const META_COLUMNS: RecordColumn[] = [
 
 const ID_COLUMN: RecordColumn = { key: "id", label: "ID" };
 
+/** Date-like keys, in priority order — the first one a view has is pulled to
+ * the front so the date sits right after the Actions column. */
+const LEAD_DATE_KEYS = ["date", "paymentDate", "scheduledSalaryDate"];
+
+/** Puts the view's date column first and Saved At last; everything else
+ * keeps its original order. */
+function arrangeColumns(columns: RecordColumn[]): RecordColumn[] {
+  const dateKey = LEAD_DATE_KEYS.find((k) => columns.some((c) => c.key === k));
+  const lead = columns.filter((c) => c.key === dateKey);
+  const tail = columns.filter((c) => c.key === "_savedAt");
+  const rest = columns.filter((c) => c.key !== dateKey && c.key !== "_savedAt");
+  return [...lead, ...rest, ...tail];
+}
+
 export const RECORD_VIEWS: RecordViewConfig[] = [
   {
     id: "cargo",
@@ -87,7 +101,7 @@ export const RECORD_VIEWS: RecordViewConfig[] = [
     types: ["trip-expense"],
     columns: [...META_COLUMNS, ...columnsFromFields(TRIP_EXPENSE_RECORD_FIELDS)],
   },
-];
+].map((view) => ({ ...view, columns: arrangeColumns(view.columns) }));
 
 export function sheetTypeLabel(type: SheetType): string {
   return getAllCargoSources().find((s) => s.type === type)?.label ?? type;
