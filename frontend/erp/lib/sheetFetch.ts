@@ -12,11 +12,12 @@ import type { SheetType } from "./types";
 
 /**
  * Pull-side of the Google Sheets sync: the Sheet is the source of truth,
- * localStorage is a cache. `refreshFromSheets` fetches every tab through the
+ * localStorage is a cache. `refreshFromSheets` fetches tabs through the
  * `listSheets` server action (the browser never talks to Apps Script
  * directly) and replaces the local caches, so data entered on any device
- * appears everywhere. Called on app start and from the sidebar's Refresh
- * button.
+ * appears everywhere. Called with a module's type subset when a route is
+ * opened, and with no argument (= every tab) from the sidebar's Refresh
+ * button and the Saved Records refresh.
  */
 
 const LAST_FETCH_KEY = "sahyadri_last_sheet_fetch";
@@ -56,6 +57,33 @@ const TYPE_LABELS: Record<string, string> = {
   clients: "Client Companies",
 };
 
+/** Every type the full (no-argument) refresh sweeps — record tabs + masters. */
+export const ALL_SYNC_TYPES: SheetType[] = [
+  ...RECORD_TYPES,
+  "locations",
+  "vehicle-master",
+  "vehicle-maintenance",
+  "materials",
+  "bills",
+  "staff",
+  "clients",
+];
+
+/**
+ * Per-type freshness registry (in-memory, resets on page reload). Stamped on
+ * every successful refresh — partial or full — so module navigation can skip
+ * types fetched recently. 5 minutes sits comfortably above the server
+ * action's 60s cache window.
+ */
+const STALE_MS = 5 * 60_000;
+const lastTypeFetch = new Map<SheetType, number>();
+
+/** The subset of `types` that has never been fetched this session or is older than the staleness window. */
+export function getStaleTypes(types: SheetType[]): SheetType[] {
+  const now = Date.now();
+  return types.filter((t) => now - (lastTypeFetch.get(t) ?? 0) > STALE_MS);
+}
+
 type SheetRow = Record<string, string | number>;
 type ListResponse = {
   success: boolean;
@@ -72,13 +100,23 @@ export interface RefreshResult {
   message: string;
 }
 
-export async function refreshFromSheets(): Promise<RefreshResult> {
+export async function refreshFromSheets(types?: SheetType[]): Promise<RefreshResult> {
   if (!hasCloudSync()) {
     return { success: false, message: "Google Sheets is not configured." };
   }
+  // The vehicle stores are replaced as an atomic pair (one replace function
+  // takes both arrays) — requesting one without the other would wipe the
+  // missing half, so the pair is always completed here.
+  const requested = types ? new Set(types) : null;
+  if (requested?.has("vehicle-master") || requested?.has("vehicle-maintenance")) {
+    requested.add("vehicle-master");
+    requested.add("vehicle-maintenance");
+  }
+  const wants = (type: SheetType) => !requested || requested.has(type);
+
   let json: ListResponse;
   try {
-    json = (await listSheets()) as ListResponse;
+    json = (await listSheets(requested ? [...requested] : undefined)) as ListResponse;
   } catch {
     return { success: false, message: "Network error fetching from Google Sheets." };
   }
@@ -94,35 +132,47 @@ export async function refreshFromSheets(): Promise<RefreshResult> {
   const missingTypes = new Set(json.missingTypes ?? []);
 
   // Refresh the custom locations list (plants + vendors) so dropdowns stay current.
-  if (!missingTypes.has("locations")) {
+  if (wants("locations") && !missingTypes.has("locations")) {
     replaceWithSheetLocations(data["locations"] ?? []);
   }
 
   // Only types whose tab was actually found are included here — omitting a
   // type's key entirely makes `replaceWithSheetRecords` leave its existing
-  // local records untouched (see its "kept" logic in localStore.ts).
+  // local records untouched (see its "kept" logic in localStore.ts). The same
+  // omission mechanism handles types outside a partial refresh's subset.
   const recordRows: Partial<Record<SheetType, SheetRow[]>> = {};
   for (const type of RECORD_TYPES) {
-    if (missingTypes.has(type)) continue;
+    if (!wants(type) || missingTypes.has(type)) continue;
     recordRows[type] = Array.isArray(data[type]) ? data[type] : [];
   }
   replaceWithSheetRecords(recordRows);
 
-  if (!missingTypes.has("vehicle-master") && !missingTypes.has("vehicle-maintenance")) {
+  if (
+    wants("vehicle-master") &&
+    !missingTypes.has("vehicle-master") &&
+    !missingTypes.has("vehicle-maintenance")
+  ) {
     replaceWithSheetVehicles(data["vehicle-master"] ?? [], data["vehicle-maintenance"] ?? []);
   }
-  if (!missingTypes.has("materials")) {
+  if (wants("materials") && !missingTypes.has("materials")) {
     replaceWithSheetMaterials(data["materials"] ?? []);
   }
-  if (!missingTypes.has("bills")) {
+  if (wants("bills") && !missingTypes.has("bills")) {
     replaceWithSheetBills(data["bills"] ?? []);
     replaceWithSheetInfraBills(data["bills"] ?? []);
   }
-  if (!missingTypes.has("staff")) {
+  if (wants("staff") && !missingTypes.has("staff")) {
     replaceWithSheetStaff(data["staff"] ?? []);
   }
-  if (!missingTypes.has("clients")) {
+  if (wants("clients") && !missingTypes.has("clients")) {
     replaceWithSheetClients(data["clients"] ?? []);
+  }
+
+  // Stamp freshness for what was actually fetched (missing tabs included —
+  // re-fetching a tab that doesn't exist won't make it appear).
+  const stampedAt = Date.now();
+  for (const type of requested ?? ALL_SYNC_TYPES) {
+    lastTypeFetch.set(type, stampedAt);
   }
 
   const counts = Object.entries(data)

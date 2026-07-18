@@ -2,6 +2,7 @@
 
 import { unstable_cache, updateTag } from "next/cache";
 import { gasConfigured, gasPost } from "@/lib/server/gas";
+import { sessionAllowed } from "@/lib/server/auth";
 import { isFlatRecord, isValidType, MAX_BATCH } from "@/lib/server/validate";
 
 /**
@@ -34,6 +35,10 @@ const NOT_CONFIGURED: MutationResult = {
   success: false,
   message: "Google Sheets is not configured.",
 };
+// Defense in depth: proxy.ts already redirects signed-out page loads, but
+// these actions are the real mutation surface, so each one re-checks the
+// session itself (no-op until the auth env vars are configured).
+const NOT_SIGNED_IN: MutationResult = { success: false, message: "Not signed in." };
 const INVALID: MutationResult = { success: false, message: "Invalid request." };
 const FAILED: MutationResult = {
   success: false,
@@ -52,6 +57,7 @@ function listTags(types?: string[]): string[] {
 }
 
 export async function listSheets(types?: string[]): Promise<ListResult> {
+  if (!(await sessionAllowed())) return NOT_SIGNED_IN;
   if (!gasConfigured()) return NOT_CONFIGURED;
   if (types !== undefined) {
     if (!Array.isArray(types) || types.length === 0 || !types.every(isValidType)) {
@@ -89,6 +95,7 @@ export async function appendRows(
   type: string,
   records: Row[]
 ): Promise<MutationResult> {
+  if (!(await sessionAllowed())) return NOT_SIGNED_IN;
   if (!gasConfigured()) return NOT_CONFIGURED;
   if (
     !isValidType(type) ||
@@ -114,6 +121,7 @@ export async function appendRows(
 }
 
 export async function upsertRow(type: string, data: Row): Promise<MutationResult> {
+  if (!(await sessionAllowed())) return NOT_SIGNED_IN;
   if (!gasConfigured()) return NOT_CONFIGURED;
   if (!isValidType(type) || !isFlatRecord(data)) return INVALID;
   try {
@@ -127,6 +135,7 @@ export async function upsertRow(type: string, data: Row): Promise<MutationResult
 }
 
 export async function deleteRow(type: string, id: string): Promise<MutationResult> {
+  if (!(await sessionAllowed())) return NOT_SIGNED_IN;
   if (!gasConfigured()) return NOT_CONFIGURED;
   if (!isValidType(type) || typeof id !== "string" || !id || id.length > 200) {
     return INVALID;
@@ -153,6 +162,7 @@ export async function uploadTripReceipt(
   filename: string,
   mimeType: string
 ): Promise<UploadResult> {
+  if (!(await sessionAllowed())) return NOT_SIGNED_IN;
   if (!gasConfigured()) return { success: false, message: "Google Sheets is not configured." };
   if (
     !ALLOWED_IMAGE_MIME_TYPES.has(mimeType) ||

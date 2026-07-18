@@ -22,19 +22,14 @@ const VEHICLE_NO_FIELD: FieldConfig = {
 
 export const MODULES: ModuleConfig[] = [
   {
-    id: "cargo",
-    label: "Cargo Transport",
-    description: "Billing, freight & route (H19, J14, J15 - J16, Matoshri, Minerva, Machine Shop)",
-  },
-  {
-    id: "billing",
-    label: "Billing",
-    description: "Monthly tax invoices per company, plant & category",
-  },
-  {
     id: "dashboard",
     label: "Dashboard",
     description: "Vehicle & driver analytics, transportation profit / loss",
+  },
+  {
+    id: "cargo",
+    label: "Cargo Transport",
+    description: "Billing, freight & route (H19, J14, J15 - J16, Matoshri, Minerva, Machine Shop)",
   },
   {
     id: "infra",
@@ -47,6 +42,16 @@ export const MODULES: ModuleConfig[] = [
     description: "Full tank fills shared across multiple trips",
   },
   {
+    id: "payroll",
+    label: "Payroll",
+    description: "Salary and daily wage/expense entries for drivers and staff",
+  },
+  {
+    id: "billing",
+    label: "Billing",
+    description: "Monthly tax invoices per company, plant & category",
+  },
+  {
     id: "drivers",
     label: "Drivers",
     description: "Driver master for vehicle-assigned drivers",
@@ -55,11 +60,6 @@ export const MODULES: ModuleConfig[] = [
     id: "staff",
     label: "Staff Master",
     description: "Accountants, hamals and other non-driver staff",
-  },
-  {
-    id: "payroll",
-    label: "Payroll",
-    description: "Salary and daily wage/expense entries for drivers and staff",
   },
   {
     id: "ledger",

@@ -1,6 +1,5 @@
-import { ClientShell } from "@/components/layout/ClientShell";
+import { redirect } from "next/navigation";
 
 export default function Home() {
-  const cloudSync = !!process.env.GAS_WEB_APP_URL;
-  return <ClientShell cloudSync={cloudSync} />;
+  redirect("/dashboard");
 }

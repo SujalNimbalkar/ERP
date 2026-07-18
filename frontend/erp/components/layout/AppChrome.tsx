@@ -1,24 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { MODULES } from "@/lib/sheetConfig";
-import { getLastSheetFetch, refreshFromSheets } from "@/lib/sheetFetch";
-import { CargoTransportForm } from "@/components/forms/CargoTransportForm";
-import { DriverMasterForm } from "@/components/forms/DriverMasterForm";
-import { StaffMasterModule } from "@/components/forms/StaffMasterModule";
-import { PayrollModule } from "@/components/forms/PayrollModule";
-import { CustomerLedgerForm } from "@/components/forms/ModuleForms";
-import { InfraCrusherForm } from "@/components/forms/InfraCrusherForm";
-import { DieselTankForm } from "@/components/forms/DieselTankForm";
-import { MaterialMasterModule } from "@/components/forms/MaterialMasterModule";
-import { PlantsVendorsModule } from "@/components/forms/PlantsVendorsModule";
-import { VehicleModule } from "@/components/forms/VehicleModule";
-import { BillingModule } from "@/components/billing/BillingModule";
-import { DashboardView } from "@/components/dashboard/DashboardView";
-import { RecordsView } from "@/components/views/RecordsView";
+import { getLastSheetFetch } from "@/lib/sheetFetch";
+import { refreshModuleData, staleModuleTypes } from "@/lib/moduleData";
 import { LocalDataPanel } from "@/components/layout/LocalDataPanel";
 import { hasCloudSync, setCloudSyncFlag } from "@/lib/storageMode";
 import { migrateLegacyCargoRecords } from "@/lib/localStore";
+import { logout } from "@/app/actions/auth";
 
 function formatFetchTime(iso: string | null): string {
   if (!iso) return "an earlier session";
@@ -26,27 +17,29 @@ function formatFetchTime(iso: string | null): string {
   return Number.isNaN(date.getTime()) ? "an earlier session" : date.toLocaleString();
 }
 
-const FORM_MAP: Record<string, React.ReactNode> = {
-  cargo: <CargoTransportForm />,
-  billing: <BillingModule />,
-  dashboard: <DashboardView />,
-  infra: <InfraCrusherForm />,
-  diesel: <DieselTankForm />,
-  drivers: <DriverMasterForm />,
-  staff: <StaffMasterModule />,
-  payroll: <PayrollModule />,
-  ledger: <CustomerLedgerForm />,
-  materials: <MaterialMasterModule />,
-  parties: <PlantsVendorsModule />,
-  vehicles: <VehicleModule />,
-  records: <RecordsView />,
-};
-
-export function AppShell({ cloudSync }: { cloudSync: boolean }) {
+/**
+ * The app-wide chrome shared by every module route: sidebar navigation,
+ * the Google Sheets sync state machine + banners, and the one-time local
+ * bootstraps. Lives in the (app) route-group layout, so it keeps its state
+ * while module pages mount/unmount underneath it. Each navigation fetches
+ * only the target module's sheet types (and only the stale ones) instead of
+ * the old every-tab startup sweep.
+ */
+export function AppChrome({
+  cloudSync,
+  sessionEmail,
+  children,
+}: {
+  cloudSync: boolean;
+  /** Signed-in Google account, or "" while auth isn't configured. */
+  sessionEmail: string;
+  children: React.ReactNode;
+}) {
   // Seeded synchronously (not in an effect) so the very first render — and
   // the useState initializer below — already sees the right value.
   setCloudSyncFlag(cloudSync);
-  const [activeModule, setActiveModule] = useState(MODULES[0].id);
+  const pathname = usePathname();
+  const moduleId = pathname.split("/")[1] || MODULES[0].id;
   // "refreshing"/"stale-error" cover a reload where a prior successful sync
   // already left data in localStorage: the app renders immediately from
   // that cache with a slim status strip instead of blocking, since a full
@@ -71,7 +64,7 @@ export function AppShell({ cloudSync }: { cloudSync: boolean }) {
   useEffect(() => {
     if (!hasCloudSync()) return;
     let cancelled = false;
-    refreshFromSheets().then((result) => {
+    refreshModuleData(moduleId).then((result) => {
       if (cancelled) return;
       if (result.success) {
         setSheetLoad("done");
@@ -85,7 +78,17 @@ export function AppShell({ cloudSync }: { cloudSync: boolean }) {
     return () => {
       cancelled = true;
     };
-  }, [fetchAttempt]);
+  }, [fetchAttempt, moduleId]);
+
+  // Sidebar-click companion to the effect above: flips the status strip on
+  // before navigating when the target module will actually fetch something.
+  // (A user event, not an effect — keeps the strip timely without setting
+  // state synchronously inside the effect.)
+  const markSyncingIfStale = (targetId: string) => {
+    if (!hasCloudSync()) return;
+    if (staleModuleTypes(targetId).length === 0) return;
+    setSheetLoad((prev) => (prev === "loading" || prev === "error" ? prev : "refreshing"));
+  };
 
   const blocked = sheetLoad === "loading" || sheetLoad === "error";
 
@@ -99,12 +102,12 @@ export function AppShell({ cloudSync }: { cloudSync: boolean }) {
 
         <nav className="flex flex-row overflow-x-auto p-1.5 md:flex-1 md:flex-col md:p-2">
           {MODULES.map((mod) => {
-            const active = activeModule === mod.id;
+            const active = moduleId === mod.id;
             return (
-              <button
+              <Link
                 key={mod.id}
-                type="button"
-                onClick={() => setActiveModule(mod.id)}
+                href={`/${mod.id}`}
+                onClick={() => markSyncingIfStale(mod.id)}
                 className={`shrink-0 whitespace-nowrap rounded-md px-3 py-2 text-left text-sm transition-colors md:mb-0.5 md:w-full ${
                   active
                     ? "border-l-[3px] border-brand bg-brand-tint pl-2.5 font-semibold text-brand-text md:border-l-[3px]"
@@ -112,7 +115,7 @@ export function AppShell({ cloudSync }: { cloudSync: boolean }) {
                 }`}
               >
                 {mod.label}
-              </button>
+              </Link>
             );
           })}
         </nav>
@@ -120,6 +123,21 @@ export function AppShell({ cloudSync }: { cloudSync: boolean }) {
         <div className="hidden md:block">
           <LocalDataPanel />
         </div>
+
+        {sessionEmail && (
+          <div className="flex items-center justify-between gap-2 border-t border-black/10 px-4 py-2 md:block md:py-3">
+            <p className="min-w-0 truncate text-xs text-black/60" title={sessionEmail}>
+              {sessionEmail}
+            </p>
+            <button
+              type="button"
+              onClick={() => logout()}
+              className="shrink-0 text-xs font-semibold text-brand-text underline md:mt-1"
+            >
+              Sign out
+            </button>
+          </div>
+        )}
       </aside>
 
       <main className="flex-1 overflow-y-auto bg-page p-3 sm:p-5 md:p-8">
@@ -181,20 +199,16 @@ export function AppShell({ cloudSync }: { cloudSync: boolean }) {
             </button>
           </p>
         )}
-        {!hasCloudSync() && activeModule !== "records" && (
+        {!hasCloudSync() && moduleId !== "records" && (
           <p className="mb-4 rounded-md border border-black/10 bg-white px-4 py-2 text-sm text-black shadow-sm">
             Data is saved in this browser only. Open{" "}
-            <button
-              type="button"
-              onClick={() => setActiveModule("records")}
-              className="font-semibold text-brand-text underline"
-            >
+            <Link href="/records" className="font-semibold text-brand-text underline">
               Saved Records
-            </button>{" "}
+            </Link>{" "}
             to view entries in table form, or use Export in the sidebar.
           </p>
         )}
-        {!blocked && FORM_MAP[activeModule]}
+        {!blocked && children}
       </main>
     </div>
   );
