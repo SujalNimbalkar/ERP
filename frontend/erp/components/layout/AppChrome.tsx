@@ -9,6 +9,7 @@ import { refreshModuleData, staleModuleTypes } from "@/lib/moduleData";
 import { LocalDataPanel } from "@/components/layout/LocalDataPanel";
 import { LoadingCard } from "@/components/ui/LoadingCard";
 import { hasCloudSync, setCloudSyncFlag } from "@/lib/storageMode";
+import { setSessionUser } from "@/lib/sessionUser";
 import { migrateLegacyCargoRecords } from "@/lib/localStore";
 import { logout } from "@/app/actions/auth";
 
@@ -39,6 +40,7 @@ export function AppChrome({
   // Seeded synchronously (not in an effect) so the very first render — and
   // the useState initializer below — already sees the right value.
   setCloudSyncFlag(cloudSync);
+  setSessionUser(sessionEmail);
   const pathname = usePathname();
   const moduleId = pathname.split("/")[1] || MODULES[0].id;
   // "refreshing"/"stale-error" cover a reload where a prior successful sync

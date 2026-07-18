@@ -249,7 +249,7 @@ export function RecordsView() {
     const q = auditSearch.trim().toLowerCase();
     if (!q) return auditLog;
     return auditLog.filter((e) =>
-      [e.action, e.recordType, e.recordId, e.documentNo ?? "", e.summary ?? ""]
+      [e.action, e.recordType, e.recordId, e.documentNo ?? "", e.summary ?? "", e.user ?? ""]
         .join(" ")
         .toLowerCase()
         .includes(q)
@@ -520,7 +520,7 @@ export function RecordsView() {
             type="search"
             value={auditSearch}
             onChange={(e) => setAuditSearch(e.target.value)}
-            placeholder="Search by action, record type, invoice no…"
+            placeholder="Search by user, action, record type, invoice no…"
             className="mb-4 w-full rounded-md border border-black/15 bg-white px-3 py-2 text-sm text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30"
           />
           {filteredAudit.length === 0 ? (
@@ -537,6 +537,7 @@ export function RecordsView() {
                 <thead>
                   <tr className="border-b border-black/10 bg-page">
                     <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 text-xs font-semibold">Timestamp</th>
+                    <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 text-xs font-semibold">User</th>
                     <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 text-xs font-semibold">Action</th>
                     <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 text-xs font-semibold">Record Type</th>
                     <th className="whitespace-nowrap border-r border-black/10 px-3 py-2 text-xs font-semibold">Record ID</th>
@@ -560,6 +561,12 @@ export function RecordsView() {
                             day: "2-digit", month: "short", year: "numeric",
                             hour: "2-digit", minute: "2-digit",
                           })}
+                        </td>
+                        <td
+                          className="max-w-45 truncate border-r border-black/10 px-3 py-2 text-xs"
+                          title={entry.user || undefined}
+                        >
+                          {entry.user || "—"}
                         </td>
                         <td className="whitespace-nowrap border-r border-black/10 px-3 py-2 text-xs font-semibold">
                           {entry.action.toUpperCase()}

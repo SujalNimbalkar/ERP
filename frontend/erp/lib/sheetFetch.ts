@@ -218,6 +218,7 @@ export async function fetchAuditLog(): Promise<AuditEntry[] | null> {
         recordId: String(row.recordId ?? ""),
         documentNo: String(row.documentNo ?? ""),
         summary: String(row.summary ?? ""),
+        user: String(row.user ?? ""),
         before: parseJsonCell(row.beforeJson),
         after: row.afterJson ? parseJsonCell(row.afterJson) : undefined,
       }))

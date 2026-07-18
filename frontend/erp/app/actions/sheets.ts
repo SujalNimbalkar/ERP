@@ -2,7 +2,7 @@
 
 import { unstable_cache, updateTag } from "next/cache";
 import { gasConfigured, gasPost } from "@/lib/server/gas";
-import { sessionAllowed } from "@/lib/server/auth";
+import { readSession, sessionAllowed } from "@/lib/server/auth";
 import { isFlatRecord, isValidType, MAX_BATCH } from "@/lib/server/validate";
 
 /**
@@ -49,6 +49,13 @@ const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
 // ~1.5MB decoded — generous for a text/table dialog screenshot, base64
 // inflates that to roughly this many characters.
 const MAX_IMAGE_BASE64_LENGTH = 2_000_000;
+
+/** The session email, server-verified — "" until auth is configured. Sent
+ * with every mutation so audit rows record who made the change; never taken
+ * from the client, so it can't be spoofed. */
+async function sessionUser(): Promise<string> {
+  return (await readSession())?.email ?? "";
+}
 
 function listTags(types?: string[]): string[] {
   return types && types.length
@@ -111,6 +118,7 @@ export async function appendRows(
       action: "append",
       type,
       records,
+      user: await sessionUser(),
     });
     if (result.success) expireType(type);
     return { success: !!result.success, message: result.message ?? "" };
@@ -125,7 +133,11 @@ export async function upsertRow(type: string, data: Row): Promise<MutationResult
   if (!gasConfigured()) return NOT_CONFIGURED;
   if (!isValidType(type) || !isFlatRecord(data)) return INVALID;
   try {
-    const result = await gasPost<MutationResult>({ action: "upsert", type, data });
+    const user = await sessionUser();
+    // Audit rows carry the author in the row itself — overwrite whatever the
+    // client put there with the server-verified identity.
+    const stamped = type === "audit" && user ? { ...data, user } : data;
+    const result = await gasPost<MutationResult>({ action: "upsert", type, data: stamped, user });
     if (result.success) expireType(type);
     return { success: !!result.success, message: result.message ?? "" };
   } catch (err) {
@@ -141,7 +153,7 @@ export async function deleteRow(type: string, id: string): Promise<MutationResul
     return INVALID;
   }
   try {
-    const result = await gasPost<MutationResult>({ action: "delete", type, id });
+    const result = await gasPost<MutationResult>({ action: "delete", type, id, user: await sessionUser() });
     if (result.success) expireType(type);
     return { success: !!result.success, message: result.message ?? "" };
   } catch (err) {

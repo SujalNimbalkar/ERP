@@ -431,6 +431,9 @@ const COLUMN_ORDER = {
     "summary",
     "beforeJson",
     "afterJson",
+    // Appended last on purpose: ensureHeaderRow only backfills trailing
+    // header cells, so existing Audit Log rows stay aligned.
+    "user",
   ],
 };
 
@@ -650,6 +653,9 @@ function doPost(e) {
     if (!type) {
       return jsonResponse({ success: false, message: "Unknown type" });
     }
+    // Who made the change — set by the Next.js server action from the
+    // verified session, "" before auth was configured.
+    const user = String(payload.user || "");
 
     const ss = getSpreadsheet_();
     const resolved = resolveTab(ss, type);
@@ -677,7 +683,7 @@ function doPost(e) {
       if (action === "delete") {
         const rowNum = findRowById(sheet, payload.id);
         if (rowNum > 0) sheet.deleteRow(rowNum);
-        appendServerAudit_(ss, "delete", type, String(payload.id || ""), "server: deleted 1 row");
+        appendServerAudit_(ss, "delete", type, String(payload.id || ""), "server: deleted 1 row", user);
         return jsonResponse({
           success: true,
           message: "Deleted from " + tabName,
@@ -695,7 +701,7 @@ function doPost(e) {
         } else {
           sheet.appendRow(row);
         }
-        appendServerAudit_(ss, "upsert", type, String(id || ""), "server: upserted 1 row");
+        appendServerAudit_(ss, "upsert", type, String(id || ""), "server: upserted 1 row", user);
         return jsonResponse({ success: true, message: "Upserted in " + tabName });
       }
 
@@ -727,6 +733,7 @@ function doPost(e) {
         type,
         String((records[0] && records[0][columns[0]]) || ""),
         "server: appended " + rows.length + " row(s)",
+        user,
       );
 
       return jsonResponse({
@@ -752,7 +759,7 @@ function doPost(e) {
  * these are not. Distinct ids mean the two never collide. Never lets an
  * audit failure break the mutation that already succeeded.
  */
-function appendServerAudit_(ss, action, type, recordId, summary) {
+function appendServerAudit_(ss, action, type, recordId, summary, user) {
   if (type === "audit") return;
   try {
     const columns = COLUMN_ORDER["audit"];
@@ -767,6 +774,7 @@ function appendServerAudit_(ss, action, type, recordId, summary) {
         recordType: type,
         recordId: recordId,
         summary: summary,
+        user: user || "",
       }),
     );
   } catch (auditErr) {

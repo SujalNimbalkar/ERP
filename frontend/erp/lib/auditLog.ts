@@ -1,4 +1,5 @@
 import { syncMasterRecord } from "./api";
+import { getSessionUser } from "./sessionUser";
 
 /**
  * Audit trail — every create/edit/delete lands here and is pushed to the
@@ -12,6 +13,10 @@ export interface AuditEntry {
   recordId: string;
   recordType: string;
   timestamp: string;
+  /** Email of the signed-in user who made the change ("" before auth existed).
+   * The server action re-stamps this from the session cookie on upload, so
+   * the sheet copy is authoritative even if this local value were tampered. */
+  user?: string;
   /** Invoice / DC / document number when the record has one — eases searching */
   documentNo?: string;
   /** One-line human description of what happened */
@@ -48,6 +53,7 @@ function auditSheetRow(entry: AuditEntry): Record<string, unknown> {
     recordId: entry.recordId,
     documentNo: entry.documentNo ?? "",
     summary: entry.summary ?? "",
+    user: entry.user ?? "",
     beforeJson: Object.keys(entry.before).length > 0 ? JSON.stringify(entry.before) : "",
     afterJson: entry.after ? JSON.stringify(entry.after) : "",
   };
@@ -59,6 +65,7 @@ export function appendAuditEntry(
   const full: AuditEntry = {
     id: crypto.randomUUID(),
     timestamp: new Date().toISOString(),
+    user: getSessionUser(),
     ...entry,
   };
   const log = readLog();
