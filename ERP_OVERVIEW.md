@@ -3,6 +3,7 @@
 > **Stack:** Next.js 16 (App Router, Turbopack) · TypeScript · Tailwind CSS (black-on-white, responsive down to mobile)
 > **Storage:** Google Sheets is the **source of truth** (via Google Apps Script Web App). Browser localStorage is a cache — hydrated per module as you navigate, and in full via the sidebar "Refresh from Sheets" button.
 > **Access:** Firebase email/password sign-in, admin-provisioned accounts only (no self-signup).
+> **Android:** an installable staff app exists as a thin Capacitor WebView shell (`android-app/`) pointed at the live site — no logic duplicated, see §15.
 
 ---
 
@@ -435,10 +436,12 @@ erp/
 │       ├── storageMode.ts
 │       ├── types.ts
 │       └── vehicleStore.ts
-└── google-apps-script/
-    └── Code.gs                      (doPost append/upsert/delete/uploadImage,
-                                      doGet list API, header-row guarantee on every
-                                      tab, Drive upload for receipt images)
+├── google-apps-script/
+│   └── Code.gs                      (doPost append/upsert/delete/uploadImage,
+│                                     doGet list API, header-row guarantee on every
+│                                     tab, Drive upload for receipt images)
+└── android-app/                     Capacitor Android wrapper — own package.json,
+                                      independent of frontend/erp's build (see §15)
 ```
 
 ---
@@ -453,3 +456,37 @@ erp/
 6. Add a view config to `RECORD_VIEWS` in `lib/recordColumns.ts`
 7. Create the form component in `components/forms/` and register it: add to `MODULES` (`lib/sheetConfig.ts`) and to `MODULE_COMPONENTS` (`components/layout/moduleRegistry.tsx`), plus a matching `app/(app)/<id>/page.tsx` route file — or nest it as a tab inside an existing module instead
 8. Create the tab in the spreadsheet — headers are written automatically on first save/read
+
+---
+
+## 15. Android App Wrapper
+
+A thin native shell for internal staff — not a rewrite. It just opens the live production site in a WebView; every module, auth flow, and data write still runs exactly as it does on the website. No offline mode, no bundled web build, no Play Store listing (distributed as a direct signed `.apk`).
+
+```
+android-app/                    Capacitor project — own package.json, independent of frontend/erp
+├── capacitor.config.json        server.url → the live production domain; remote-URL mode
+├── assets/                      1024×1024 icon source art (generated from the Sahyadri Infra logo)
+├── www/                         placeholder page only — never actually shown; Capacitor requires
+│                                 *a* webDir to exist even though remote mode ignores it at runtime
+└── android/                     generated Gradle/Android project — committed as native source,
+    │                             not a build output (build/, local.properties, keystore.properties
+    │                             are gitignored)
+    ├── app/src/main/java/.../MainActivity.java
+    │       back button → WebView history, via the non-deprecated OnBackPressedCallback API
+    │       (android:enableOnBackInvokedCallback="true" in AndroidManifest.xml enables the
+    │       Android 13+ predictive-back gesture animation too)
+    ├── app/src/main/res/        generated launcher icon (incl. adaptive icon) + splash screen,
+    │                             all densities — via `npx capacitor-assets generate --android`
+    ├── variables.gradle          targetSdkVersion pinned to 34, not 35 — Android 15 forces
+    │                             edge-to-edge layout (content drawing under the status/nav bars)
+    │                             on apps targeting SDK 35, and this plain WebView shell has no
+    │                             inset-handling code to compensate; compileSdk stays 35
+    └── keystore.properties       gitignored — signing credentials, never committed
+```
+
+- **Remote-URL, not bundled**: the app ships no web build of its own — it's a WebView pointed at the live deployed site. Any change to the website (new features, bug fixes, data) appears instantly for everyone with the app installed; a new `.apk` is only needed when something *native* changes — the icon, splash, back-button behavior, or the allowed domain in `capacitor.config.json`.
+- **Capacitor pinned to the v7.x line** (not v8) — v8 requires Node ≥22, and this repo's tooling targets Node 20. All `@capacitor/*` packages and `@capacitor/assets` are pinned accordingly.
+- **Config is JSON, not TS** — Capacitor 7's CLI TypeScript-config loader crashes against the TypeScript version resolved in this environment; `capacitor.config.json` is fully equivalent for static values like these, so JSON sidesteps the bug entirely.
+- **Signing keystore lives outside the repo** entirely, in a machine/company-managed backed-up location — losing it means every future update requires all staff to uninstall and reinstall under a new app signature, since Android requires the same key for every update of a given app.
+- **Build**: `cd android-app/android && ./gradlew assembleRelease` → `android/app/build/outputs/apk/release/app-release.apk` (gitignored — rebuilt locally, then handed out directly via link/Drive/WhatsApp, not through a store).

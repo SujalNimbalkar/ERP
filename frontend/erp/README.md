@@ -4,6 +4,8 @@ Internal operations ERP for a transport, crushing & infra business — cargo tri
 
 For the full architecture (data flow, event bus, billing logic, Sheet column layout, module checklist) see **[ERP_OVERVIEW.md](../../ERP_OVERVIEW.md)** at the repo root. This file just covers running and building the Next.js frontend.
 
+There's also an installable Android app for staff — a thin WebView shell pointed at this site, so it needs no changes here to stay in sync. See **[../../android-app/](../../android-app/)** and [ERP_OVERVIEW.md §15](../../ERP_OVERVIEW.md#15-android-app-wrapper).
+
 ## Stack
 
 Next.js 16 (App Router) · TypeScript · Tailwind CSS 4 · Firebase Auth (email/password) · Google Sheets via Apps Script Web App
