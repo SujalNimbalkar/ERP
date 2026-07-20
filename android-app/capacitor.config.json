@@ -1,0 +1,14 @@
+{
+  "appId": "com.sahyadriinfra.erp",
+  "appName": "Sahyadri Infra ERP",
+  "webDir": "www",
+  "server": {
+    "url": "https://sahyadri-infra.vercel.app/",
+    "cleartext": false,
+    "androidScheme": "https",
+    "allowNavigation": ["sahyadri-infra.vercel.app"]
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}

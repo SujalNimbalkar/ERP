@@ -1,0 +1,22 @@
+# Node
+node_modules/
+
+# Capacitor generated Android native project — build artifacts only.
+# The android/ project structure itself (build.gradle, MainActivity.java,
+# AndroidManifest.xml, res/) is committed since it's checked-in native
+# source, not a build output.
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/captures/
+android/.cxx/
+
+# Signing — never commit the keystore or its credentials
+android/keystore.properties
+*.keystore
+*.jks
+
+# IDE
+android/.idea/
+android/*.iml

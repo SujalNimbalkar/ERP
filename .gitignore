@@ -46,6 +46,13 @@ desktop.ini
 *.tsbuildinfo
 frontend/erp/next-env.d.ts
 
+# Android wrapper (android-app/) — see android-app/.gitignore for the full list
+android-app/node_modules/
+android-app/android/app/build/
+android-app/android/local.properties
+*.keystore
+*.jks
+
 # Misc
 *.pem
 .vercel
