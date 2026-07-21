@@ -203,7 +203,7 @@ export function StaffMasterModule() {
                     Mobile
                   </th>
                   <th className="border-r border-black/10 px-3 py-2 text-xs font-semibold">
-                    Rate (Rs)
+                    Salary (Rs)
                   </th>
                   <th className="border-r border-black/10 px-3 py-2 text-xs font-semibold">
                     Notes
