@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { submitToSheet } from "@/lib/api";
 import {
   SALARY_FIELDS,
@@ -9,12 +9,26 @@ import {
   parseFormData,
 } from "@/lib/sheetConfig";
 import { getPayeeOptions, findPayeeById, type StaffOption } from "@/lib/staffStore";
+import { getLocalRecordsByType } from "@/lib/localStore";
 import type { FieldConfig } from "@/lib/types";
 import { FormField } from "@/components/ui/FormField";
 import { StatusMessage } from "@/components/ui/StatusMessage";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Toast } from "@/components/ui/Toast";
 import { useConfirmSave } from "@/components/ui/useConfirmSave";
+
+/** Total salary paid to this payee (any payment type) in the month of the given payment date. */
+function payeeMonthTotal(driverId: string, paymentDate: string): number {
+  const month = paymentDate.slice(0, 7);
+  if (!driverId || !month) return 0;
+  return getLocalRecordsByType("salary")
+    .filter(
+      (r) =>
+        String(r.data.driverId) === driverId &&
+        String(r.data.paymentDate ?? "").startsWith(month)
+    )
+    .reduce((sum, r) => sum + (Number(r.data.amount) || 0), 0);
+}
 
 function visibleSalaryFields(paymentType: string, payeeOptions: StaffOption[]): FieldConfig[] {
   return SALARY_FIELDS.filter((field) => {
@@ -53,12 +67,48 @@ function visibleSalaryFields(paymentType: string, payeeOptions: StaffOption[]): 
   });
 }
 
+function formatRs(amount: number): string {
+  return `Rs ${amount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+}
+
+function SalaryMonthBanner({
+  name,
+  month,
+  paid,
+  decided,
+}: {
+  name: string;
+  month: string;
+  paid: number;
+  decided: number;
+}) {
+  const remaining = decided - paid;
+  const over = remaining < 0;
+
+  return (
+    <p
+      className={`rounded-md border-l-4 px-3 py-2 text-xs text-black ${
+        over ? "border-amber-500 bg-amber-50" : "border-brand bg-brand-tint"
+      }`}
+    >
+      {name} — salary paid in {month}: <span className="font-semibold">{formatRs(paid)}</span> of{" "}
+      {formatRs(decided)} decided.{" "}
+      {over
+        ? `${formatRs(-remaining)} over the decided salary.`
+        : remaining === 0
+          ? "Fully paid for this month."
+          : `Remaining: ${formatRs(remaining)}.`}
+    </p>
+  );
+}
+
 export function DriverSalaryForm() {
   const [values, setValues] = useState(() => emptyValues(SALARY_FIELDS));
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [payeeOptions, setPayeeOptions] = useState(() => getPayeeOptions());
+  const [recordsVersion, setRecordsVersion] = useState(0);
   const { confirmOpen, requestConfirm, confirmSave, cancel, toast, notify, dismissToast } =
     useConfirmSave();
 
@@ -66,7 +116,10 @@ export function DriverSalaryForm() {
   const fields = visibleSalaryFields(paymentType, payeeOptions);
 
   useEffect(() => {
-    const sync = () => setPayeeOptions(getPayeeOptions());
+    const sync = () => {
+      setPayeeOptions(getPayeeOptions());
+      setRecordsVersion((v) => v + 1);
+    };
 
     window.addEventListener("sahyadri-local-update", sync);
     window.addEventListener("sahyadri-staff-update", sync);
@@ -75,6 +128,15 @@ export function DriverSalaryForm() {
       window.removeEventListener("sahyadri-staff-update", sync);
     };
   }, []);
+
+  const selectedPayee = values.driverId ? findPayeeById(values.driverId) : undefined;
+
+  const monthTotal = useMemo(
+    () => payeeMonthTotal(values.driverId, values.paymentDate),
+    // recordsVersion re-reads localStorage after every save
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [values.driverId, values.paymentDate, recordsVersion]
+  );
 
   function handleChange(name: string, value: string) {
     setValues((prev) => {
@@ -193,6 +255,15 @@ export function DriverSalaryForm() {
             </div>
           ))}
         </div>
+
+        {selectedPayee && Number(selectedPayee.rate) > 0 && values.paymentDate && (
+          <SalaryMonthBanner
+            name={selectedPayee.name}
+            month={values.paymentDate.slice(0, 7)}
+            paid={monthTotal}
+            decided={Number(selectedPayee.rate)}
+          />
+        )}
 
         <StatusMessage type={status} message={message} />
 
