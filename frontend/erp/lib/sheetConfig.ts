@@ -490,6 +490,12 @@ export const DIESEL_FILL_FIELDS: FieldConfig[] = [
     placeholder: "Auto: amount ÷ rate",
   },
   {
+    name: "odometerKm",
+    label: "Odometer Reading (km, optional)",
+    type: "number",
+    placeholder: "Read occasionally (e.g. once a month) to enable fuel-efficiency tracking",
+  },
+  {
     name: "driverName",
     label: "Driver",
     type: "select",
@@ -523,6 +529,19 @@ export const DIESEL_FILL_FIELDS: FieldConfig[] = [
 export const DIESEL_SUBFORM_FIELDS: FieldConfig[] = DIESEL_FILL_FIELDS.filter(
   (f) => !["fillRef", "date", "vehicleNo", "driverName", "driverId"].includes(f.name)
 );
+
+/** Fixed choices for Infra & Crusher's "Type of Material" — rendered as a
+ * select with a custom "Other" free-text fallback (see InfraCrusherForm.tsx),
+ * not a plain FieldConfig select, so an arbitrary value typed under "Other"
+ * still round-trips correctly on re-edit. */
+export const INFRA_MATERIAL_TYPE_OPTIONS = [
+  "Khadi 20 mm",
+  "Khadi 10 mm",
+  "Khadi 6mm",
+  "Crush Sand",
+  "Plaster Sand",
+  "Dabar",
+];
 
 export const INFRA_FIELDS: FieldConfig[] = [
   DATE_FIELD,

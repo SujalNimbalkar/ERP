@@ -170,6 +170,47 @@ function emptySourceValues(): Record<string, string> {
   };
 }
 
+/** Whole in-progress trip, saved to sessionStorage so it survives navigating
+ * to another module (e.g. Materials, to look up a code) and back — the page
+ * router unmounts this form on every navigation, which would otherwise wipe
+ * all of its useState. Cleared once the trip actually saves or is discarded. */
+interface CargoDraft {
+  activeSourceType: string;
+  values: Record<string, string>;
+  invoices: InvoiceValues[];
+  dieselSubValues: Record<string, string>;
+  maintenanceSubValues: Record<string, string>;
+  tripExpenseSubValues: Record<string, string>;
+  savedDieselFillRef: string | null;
+}
+
+const CARGO_DRAFT_STORAGE_KEY = "sahyadri-cargo-transport-draft";
+
+function loadCargoDraft(): CargoDraft | null {
+  try {
+    const raw = sessionStorage.getItem(CARGO_DRAFT_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as CargoDraft) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveCargoDraft(draft: CargoDraft) {
+  try {
+    sessionStorage.setItem(CARGO_DRAFT_STORAGE_KEY, JSON.stringify(draft));
+  } catch {
+    // Storage unavailable (private browsing, quota) — draft simply won't survive navigation.
+  }
+}
+
+function clearCargoDraft() {
+  try {
+    sessionStorage.removeItem(CARGO_DRAFT_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 /** Keeps an invoice's To valid for its (possibly just-changed) From — clears
  * it if it no longer appears in the new From's destination options. */
 function applyInvoiceRoute(invoice: InvoiceValues, name: "fromType" | "toParty", value: string): InvoiceValues {
@@ -393,13 +434,17 @@ function applyDriverSuggestion(
 
 export function CargoTransportForm() {
   const [cargoSources, setCargoSources] = useState<CargoSource[]>(() => getAllCargoSources());
-  const [activeSource, setActiveSource] = useState<CargoSource>(
-    () => getAllCargoSources()[0]
+  const [activeSource, setActiveSource] = useState<CargoSource>(() => {
+    const sources = getAllCargoSources();
+    const draftType = loadCargoDraft()?.activeSourceType;
+    return sources.find((s) => s.type === draftType) ?? sources[0];
+  });
+  const [values, setValues] = useState<Record<string, string>>(
+    () => loadCargoDraft()?.values ?? emptySourceValues()
   );
-  const [values, setValues] = useState<Record<string, string>>(() => emptySourceValues());
-  const [invoices, setInvoices] = useState<InvoiceValues[]>(() => [
-    createInvoice(getAllCargoSources()[0].type),
-  ]);
+  const [invoices, setInvoices] = useState<InvoiceValues[]>(
+    () => loadCargoDraft()?.invoices ?? [createInvoice(getAllCargoSources()[0].type)]
+  );
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -435,21 +480,45 @@ export function CargoTransportForm() {
     return () => window.removeEventListener("sahyadri-local-update", refetch);
   }, []);
 
-  const [dieselSubValues, setDieselSubValues] = useState<Record<string, string>>(() =>
-    emptyDieselSubValues()
+  const [dieselSubValues, setDieselSubValues] = useState<Record<string, string>>(
+    () => loadCargoDraft()?.dieselSubValues ?? emptyDieselSubValues()
   );
-  const [maintenanceSubValues, setMaintenanceSubValues] = useState<Record<string, string>>(() =>
-    emptyMaintenanceSubValues()
+  const [maintenanceSubValues, setMaintenanceSubValues] = useState<Record<string, string>>(
+    () => loadCargoDraft()?.maintenanceSubValues ?? emptyMaintenanceSubValues()
   );
-  const [tripExpenseSubValues, setTripExpenseSubValues] = useState<Record<string, string>>(() =>
-    emptyTripExpenseSubValues()
+  const [tripExpenseSubValues, setTripExpenseSubValues] = useState<Record<string, string>>(
+    () => loadCargoDraft()?.tripExpenseSubValues ?? emptyTripExpenseSubValues()
   );
   // Tracks the ref actually persisted via "Save Diesel Fill Now", so the final
   // Save Trip submit doesn't create a second, duplicate Diesel Tank record for
   // the same fill. Cleared (by mismatching) whenever vehicle/first-invoice-date
   // change after a save, so a stale save can't silently swallow a new fill.
-  const [savedDieselFillRef, setSavedDieselFillRef] = useState<string | null>(null);
+  const [savedDieselFillRef, setSavedDieselFillRef] = useState<string | null>(
+    () => loadCargoDraft()?.savedDieselFillRef ?? null
+  );
   const [savingDieselFill, setSavingDieselFill] = useState(false);
+
+  // Keep the sessionStorage draft in sync with every change, so the trip
+  // survives a navigation away (and the resulting unmount) and back.
+  useEffect(() => {
+    saveCargoDraft({
+      activeSourceType: activeSource.type,
+      values,
+      invoices,
+      dieselSubValues,
+      maintenanceSubValues,
+      tripExpenseSubValues,
+      savedDieselFillRef,
+    });
+  }, [
+    activeSource,
+    values,
+    invoices,
+    dieselSubValues,
+    maintenanceSubValues,
+    tripExpenseSubValues,
+    savedDieselFillRef,
+  ]);
 
   const tripSections = useMemo(
     () =>
@@ -879,6 +948,7 @@ export function CargoTransportForm() {
       setValues(emptySourceValues());
       setInvoices([createInvoice(activeSource.type)]);
       resetLinkedRecordState();
+      clearCargoDraft();
     } catch {
       setStatus("error");
       setMessage("Network error. Check your connection and Web App URL.");
@@ -891,6 +961,7 @@ export function CargoTransportForm() {
     setValues(emptySourceValues());
     setInvoices([createInvoice(activeSource.type)]);
     resetLinkedRecordState();
+    clearCargoDraft();
     cancel();
     notify("Entry deleted — form cleared.", "error");
   }

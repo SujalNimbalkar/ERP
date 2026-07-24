@@ -15,6 +15,8 @@ export interface LocationEntry {
    * unchecked, so re-checking it doesn't mint a new slug and orphan old trips. */
   cargoType?: string;
   notes: string;
+  address: string;
+  gst: string;
   addedAt: string;
   updatedAt?: string;
 }
@@ -87,6 +89,8 @@ export function replaceWithSheetLocations(rows: Record<string, unknown>[]): void
       isCargoPlant: toStr(row.isCargoPlant) === "true" || toStr(row.isCargoPlant) === "TRUE",
       cargoType: toStr(row.cargoType) || undefined,
       notes: toStr(row.notes),
+      address: toStr(row.address),
+      gst: toStr(row.gst),
       addedAt: toStr(row.addedAt) || new Date().toISOString(),
       updatedAt: toStr(row.updatedAt) || undefined,
     }));
@@ -131,7 +135,7 @@ export function saveLocation(
 
 export function updateLocation(
   id: string,
-  updates: Partial<Pick<LocationEntry, "name" | "isCargoPlant" | "notes">>
+  updates: Partial<Pick<LocationEntry, "name" | "isCargoPlant" | "notes" | "address" | "gst">>
 ): LocationEntry | null {
   const all = readAll();
   const idx = all.findIndex((l) => l.id === id);

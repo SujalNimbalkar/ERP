@@ -6,8 +6,10 @@ import {
   collectTrips,
   driverSummary,
   monthlyPL,
+  monthRange,
   plTotals,
   staffPayrollSummary,
+  vehicleFuelEfficiency,
   vehicleSummary,
   type DashboardFilters,
 } from "@/lib/dashboard";
@@ -15,6 +17,9 @@ import { formatMoney, formatMonthLabel, formatQty } from "@/lib/billing";
 import { COMPANIES, companyName } from "@/lib/companies";
 import { getAllCargoSources, type CargoSourceType } from "@/lib/sheetConfig";
 import { downloadCsv } from "@/lib/recordColumns";
+import { getAllVehicles } from "@/lib/vehicleStore";
+import { VehiclePerformanceSection } from "@/components/dashboard/VehiclePerformanceSection";
+import type { VehicleMetrics } from "@/lib/vehiclePerformance";
 
 /** Local YYYY-MM-DD (no UTC shift from toISOString). */
 function formatDate(d: Date): string {
@@ -102,7 +107,7 @@ function exportRows(filename: string, header: string[], rows: (string | number)[
 }
 
 export function DashboardView() {
-  const [fromDate, setFromDate] = useState(() => dateOffset(-5));
+  const [fromDate, setFromDate] = useState(() => dateOffset(-1));
   const [toDate, setToDate] = useState(() => dateOffset(0));
   const [companyId, setCompanyId] = useState("");
   const [plantType, setPlantType] = useState<CargoSourceType | "">("");
@@ -138,11 +143,45 @@ export function DashboardView() {
   const drivers = useMemo(() => driverSummary(filters), [filters, version]);
   const staffPayroll = useMemo(() => staffPayrollSummary(filters), [filters, version]);
   const months = useMemo(() => monthlyPL(filters), [filters, version]);
+  const fuelEfficiency = useMemo(() => vehicleFuelEfficiency(filters), [filters, version]);
+  const vehiclesMaster = useMemo(() => getAllVehicles(), [version]);
   const allTrips = useMemo(() => {
     const unscoped = { ...filters, vehicleNo: "", driverId: "" };
     return [...collectTrips(unscoped), ...collectInfraTrips(unscoped)];
   }, [fromDate, toDate, companyId, plantType, version]);
   /* eslint-enable react-hooks/exhaustive-deps */
+
+  const monthCount = useMemo(
+    () => Math.max(1, monthRange(fromDate.slice(0, 7), toDate.slice(0, 7)).length),
+    [fromDate, toDate]
+  );
+
+  const capacityByVehicle = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const v of vehiclesMaster) {
+      const capacity = Number(v.loadCapacityKg);
+      if (v.registrationNo && capacity > 0) map.set(v.registrationNo, capacity);
+    }
+    return map;
+  }, [vehiclesMaster]);
+
+  const vehiclePerformanceMetrics: VehicleMetrics[] = useMemo(
+    () =>
+      vehicles
+        .filter((v) => v.trips > 0)
+        .map((v) => {
+          const capacity = capacityByVehicle.get(v.vehicleNo);
+          const fuel = fuelEfficiency.find((f) => f.vehicleNo === v.vehicleNo);
+          return {
+            vehicleNo: v.vehicleNo,
+            profitMarginPercent: v.earnings > 0 ? (v.profit / v.earnings) * 100 : null,
+            capacityUtilizationPercent: capacity ? ((v.totalWt / v.trips) / capacity) * 100 : null,
+            fuelEfficiencyKmPerLiter: fuel ? fuel.kmPerLiter : null,
+            tripsPerMonth: v.trips / monthCount,
+          };
+        }),
+    [vehicles, capacityByVehicle, fuelEfficiency, monthCount]
+  );
 
   const vehicleOptions = useMemo(
     () => Array.from(new Set(allTrips.map((t) => t.vehicleNo).filter(Boolean))).sort(),
@@ -157,7 +196,6 @@ export function DashboardView() {
   }, [allTrips]);
 
   const scoped = !!(companyId || plantType || driverId);
-  const maxVehicleEarning = Math.max(0, ...vehicles.map((v) => v.earnings));
   const maxMonthRevenue = Math.max(0, ...months.map((m) => m.revenue));
 
   const profitColor = totals.profit < 0 ? COLOR.critical : COLOR.good;
@@ -330,10 +368,7 @@ export function DashboardView() {
                     <td className={`${cell} font-medium whitespace-nowrap`}>{v.vehicleNo}</td>
                     <td className={cellRight}>{v.trips}</td>
                     <td className={cellRight}>{formatQty(v.totalWt)}</td>
-                    <td className={cellRight}>
-                      {money(v.earnings)}
-                      <Bar value={v.earnings} max={maxVehicleEarning} color={COLOR.revenue} />
-                    </td>
+                    <td className={cellRight}>{money(v.earnings)}</td>
                     <td className={cellRight}>{money(v.dieselCost)}</td>
                     <td className={cellRight}>{money(v.maintenanceCost)}</td>
                     <td className={cellRight}>{money(v.toll)}</td>
@@ -349,6 +384,16 @@ export function DashboardView() {
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section className="mb-6">
+        <h3
+          className="mb-2 border-l-[3px] pl-2 text-base font-semibold text-black"
+          style={{ borderColor: COLOR.diesel }}
+        >
+          Vehicle Efficiency
+        </h3>
+        <VehiclePerformanceSection metrics={vehiclePerformanceMetrics} />
       </section>
 
       <section className="mb-6">

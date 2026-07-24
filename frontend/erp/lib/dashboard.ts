@@ -23,9 +23,16 @@ import type { LocalRecord } from "./types";
  *   Amount ignores what was paid to the crusher, so using it directly would
  *   overstate profit by the crusher cost on every trip.
  * - Each Infra & Crusher record is one trip of its own (see
- *   `collectInfraTrips()`) — counted in trip totals alongside cargo trips,
- *   but with no kg weight (infra quantities are brass).
+ *   `collectInfraTrips()`) — counted in trip totals alongside cargo trips.
+ *   Its quantity is recorded in brass, not kg, so it's converted via
+ *   `BRASS_TO_KG` to fold into the same weight totals as cargo trips.
  */
+
+/** Approximate crushed-stone/sand density used to fold Infra & Crusher's
+ * brass quantities into the same kg weight totals as Cargo trips — an
+ * industry rule-of-thumb, not a measured constant, so dashboard weight
+ * figures that include Infra trips are approximate. */
+export const BRASS_TO_KG = 4500;
 
 export interface DashboardFilters {
   /** Inclusive YYYY-MM-DD range */
@@ -64,6 +71,17 @@ export interface VehicleSummaryRow {
   maintenanceCost: number;
   toll: number;
   profit: number;
+  /** Distinct trip dates — a truck doing 1 trip/day for 20 days and one doing
+   * 20 trips in a single day both show 20 `trips`, but very different `activeDays`. */
+  activeDays: number;
+}
+
+export interface FuelEfficiencyRow {
+  vehicleNo: string;
+  kmPerLiter: number;
+  /** How many odometer-reading pairs fed this average — surfaced so a
+   * single noisy interval doesn't read with the same confidence as ten. */
+  intervalCount: number;
 }
 
 export interface DriverSummaryRow {
@@ -293,8 +311,8 @@ export function collectInfraTrips(filters: DashboardFilters): Trip[] {
       driverId,
       driverName: driverId ? (names.get(driverId) ?? driverId) : "",
       lineCount: 1,
-      // Infra quantities are in brass, not kg — kept out of the weight totals.
-      totalWt: 0,
+      // Brass → kg so Infra trips fold into the same weight totals as Cargo — see BRASS_TO_KG.
+      totalWt: round2(num(data.qtyBrass) * BRASS_TO_KG),
       earning: infraEarning(data),
       toll: linkedExpense ? linkedExpense.toll : num(data.tollOverloadAmount),
       dieselUsed: linkedExpense ? linkedExpense.dieselUsed : num(data.dieselUsedThisTrip),
@@ -313,6 +331,7 @@ function datedRecords(type: Parameters<typeof getLocalRecordsByType>[0], filters
 
 export function vehicleSummary(filters: DashboardFilters): VehicleSummaryRow[] {
   const rows = new Map<string, VehicleSummaryRow>();
+  const activeDates = new Map<string, Set<string>>();
   const get = (vehicleNo: string): VehicleSummaryRow => {
     let row = rows.get(vehicleNo);
     if (!row) {
@@ -325,18 +344,22 @@ export function vehicleSummary(filters: DashboardFilters): VehicleSummaryRow[] {
         maintenanceCost: 0,
         toll: 0,
         profit: 0,
+        activeDays: 0,
       };
       rows.set(vehicleNo, row);
+      activeDates.set(vehicleNo, new Set());
     }
     return row;
   };
 
   for (const trip of collectTrips(filters)) {
-    const row = get(trip.vehicleNo || "(no vehicle)");
+    const vehicleNo = trip.vehicleNo || "(no vehicle)";
+    const row = get(vehicleNo);
     row.trips += 1;
     row.totalWt = round2(row.totalWt + trip.totalWt);
     row.earnings = round2(row.earnings + trip.earning);
     row.toll = round2(row.toll + trip.toll);
+    if (trip.date) activeDates.get(vehicleNo)!.add(trip.date);
   }
 
   // Company / plant / driver filters scope the view to trip numbers only —
@@ -346,10 +369,13 @@ export function vehicleSummary(filters: DashboardFilters): VehicleSummaryRow[] {
 
   if (!scoped) {
     for (const trip of collectInfraTrips(filters)) {
-      const row = get(trip.vehicleNo || "(no vehicle)");
+      const vehicleNo = trip.vehicleNo || "(no vehicle)";
+      const row = get(vehicleNo);
       row.trips += 1;
+      row.totalWt = round2(row.totalWt + trip.totalWt);
       row.earnings = round2(row.earnings + trip.earning);
       row.toll = round2(row.toll + trip.toll);
+      if (trip.date) activeDates.get(vehicleNo)!.add(trip.date);
     }
 
     for (const r of datedRecords("diesel", filters)) {
@@ -374,8 +400,78 @@ export function vehicleSummary(filters: DashboardFilters): VehicleSummaryRow[] {
     .map((row) => ({
       ...row,
       profit: round2(row.earnings - row.dieselCost - row.maintenanceCost - row.toll),
+      activeDays: activeDates.get(row.vehicleNo)?.size ?? 0,
     }))
     .sort((a, b) => b.earnings - a.earnings);
+}
+
+/**
+ * Fuel efficiency (km/liter) per vehicle — derived from whichever diesel
+ * fills happen to carry an odometer reading (optional, entered maybe once a
+ * month, never on every fill — see `odometerKm` on `DIESEL_FILL_FIELDS`).
+ * Walks each vehicle's fills in date order and, for every consecutive pair
+ * that BOTH have a reading, treats the odometer delta as the distance
+ * covered and the liters filled in between (up to and including the later
+ * reading) as the fuel spent covering it. A vehicle's final number is a
+ * distance-weighted average across all such intervals in range
+ * (sum(distance)/sum(liters)), not an average of per-interval ratios, so one
+ * short/noisy interval can't skew it as much as the well-measured ones.
+ */
+export function vehicleFuelEfficiency(filters: DashboardFilters): FuelEfficiencyRow[] {
+  const fillsByVehicle = new Map<
+    string,
+    { date: string; odometerKm: number; liters: number }[]
+  >();
+
+  for (const r of datedRecords("diesel", filters)) {
+    const vehicleNo = String(r.data.vehicleNo ?? "");
+    if (!vehicleNo || (filters.vehicleNo && vehicleNo !== filters.vehicleNo)) continue;
+    const date = String(r.data.date ?? "");
+    if (!date) continue;
+    let list = fillsByVehicle.get(vehicleNo);
+    if (!list) {
+      list = [];
+      fillsByVehicle.set(vehicleNo, list);
+    }
+    list.push({ date, odometerKm: num(r.data.odometerKm), liters: num(r.data.liters) });
+  }
+
+  const result: FuelEfficiencyRow[] = [];
+  for (const [vehicleNo, fills] of fillsByVehicle) {
+    fills.sort((a, b) => a.date.localeCompare(b.date));
+
+    let totalDistance = 0;
+    let totalLiters = 0;
+    let intervalCount = 0;
+    let anchor: { date: string; odometerKm: number } | null = null;
+    let litersSinceAnchor = 0;
+
+    for (const fill of fills) {
+      if (anchor) litersSinceAnchor += fill.liters;
+      if (fill.odometerKm > 0) {
+        if (anchor) {
+          const distance = fill.odometerKm - anchor.odometerKm;
+          if (distance > 0 && litersSinceAnchor > 0) {
+            totalDistance += distance;
+            totalLiters += litersSinceAnchor;
+            intervalCount += 1;
+          }
+        }
+        anchor = { date: fill.date, odometerKm: fill.odometerKm };
+        litersSinceAnchor = 0;
+      }
+    }
+
+    if (totalLiters > 0) {
+      result.push({
+        vehicleNo,
+        kmPerLiter: round2(totalDistance / totalLiters),
+        intervalCount,
+      });
+    }
+  }
+
+  return result.sort((a, b) => b.kmPerLiter - a.kmPerLiter);
 }
 
 export function driverSummary(filters: DashboardFilters): DriverSummaryRow[] {

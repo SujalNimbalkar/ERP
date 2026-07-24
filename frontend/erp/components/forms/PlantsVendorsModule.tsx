@@ -31,6 +31,8 @@ interface DisplayRow {
   isBuiltIn: boolean;
   isCargoPlant: boolean;
   notes: string;
+  address: string;
+  gst: string;
   location?: LocationEntry;
 }
 
@@ -39,10 +41,12 @@ interface EditState {
   name: string;
   isCargoPlant: boolean;
   notes: string;
+  address: string;
+  gst: string;
 }
 
 function blankForm() {
-  return { name: "", isCargoPlant: false, notes: "" };
+  return { name: "", isCargoPlant: false, notes: "", address: "", gst: "" };
 }
 
 export function PlantsVendorsModule() {
@@ -76,6 +80,8 @@ export function PlantsVendorsModule() {
       isBuiltIn: true,
       isCargoPlant: true,
       notes: "",
+      address: "",
+      gst: "",
     })),
     ...locations.map((l) => ({
       key: l.id,
@@ -83,6 +89,8 @@ export function PlantsVendorsModule() {
       isBuiltIn: false,
       isCargoPlant: l.isCargoPlant,
       notes: l.notes,
+      address: l.address,
+      gst: l.gst,
       location: l,
     })),
   ];
@@ -99,6 +107,8 @@ export function PlantsVendorsModule() {
       name: location.name,
       isCargoPlant: location.isCargoPlant,
       notes: location.notes,
+      address: location.address,
+      gst: location.gst,
     });
     setEditError("");
   }
@@ -123,6 +133,8 @@ export function PlantsVendorsModule() {
       name: trimName,
       isCargoPlant: current.isCargoPlant,
       notes: current.notes.trim(),
+      address: current.address.trim(),
+      gst: current.gst.trim(),
     });
     setEditing(null);
     setEditError("");
@@ -142,6 +154,8 @@ export function PlantsVendorsModule() {
       name: trimName,
       isCargoPlant: form.isCargoPlant,
       notes: form.notes.trim(),
+      address: form.address.trim(),
+      gst: form.gst.trim(),
     });
     setForm(blankForm());
     refresh();
@@ -222,6 +236,12 @@ export function PlantsVendorsModule() {
                     Type
                   </th>
                   <th className="border-r border-black/10 px-3 py-2 text-xs font-semibold">
+                    Address
+                  </th>
+                  <th className="border-r border-black/10 px-3 py-2 text-xs font-semibold">
+                    GST
+                  </th>
+                  <th className="border-r border-black/10 px-3 py-2 text-xs font-semibold">
                     Notes
                   </th>
                   <th className="px-3 py-2 text-xs font-semibold">Action</th>
@@ -230,7 +250,7 @@ export function PlantsVendorsModule() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-3 py-6 text-sm text-black">
+                    <td colSpan={6} className="px-3 py-6 text-sm text-black">
                       {rows.length === 0 ? "Nothing added yet." : `No matches for “${search}”.`}
                     </td>
                   </tr>
@@ -259,6 +279,24 @@ export function PlantsVendorsModule() {
                               />
                               Cargo Plant
                             </label>
+                          </td>
+                          <td className="border-r border-black/10 px-2 py-1.5">
+                            <input
+                              type="text"
+                              value={editing.address}
+                              onChange={(e) =>
+                                setEditing({ ...editing, address: e.target.value })
+                              }
+                              className={cellInputClass}
+                            />
+                          </td>
+                          <td className="border-r border-black/10 px-2 py-1.5">
+                            <input
+                              type="text"
+                              value={editing.gst}
+                              onChange={(e) => setEditing({ ...editing, gst: e.target.value })}
+                              className={cellInputClass}
+                            />
                           </td>
                           <td className="border-r border-black/10 px-2 py-1.5">
                             <input
@@ -302,6 +340,12 @@ export function PlantsVendorsModule() {
                           ) : (
                             <span>Vendor</span>
                           )}
+                        </td>
+                        <td className="border-r border-black/10 px-3 py-2 text-xs">
+                          {row.address || "—"}
+                        </td>
+                        <td className="border-r border-black/10 px-3 py-2 text-xs">
+                          {row.gst || "—"}
                         </td>
                         <td className="border-r border-black/10 px-3 py-2 text-xs">
                           {row.notes || "—"}
@@ -381,6 +425,34 @@ export function PlantsVendorsModule() {
             </p>
 
             <div className="flex flex-col gap-1">
+              <label htmlFor="loc-address" className="text-sm font-medium text-black">
+                Address (optional)
+              </label>
+              <input
+                id="loc-address"
+                type="text"
+                value={form.address}
+                onChange={(e) => setForm({ ...form, address: e.target.value })}
+                placeholder="e.g. Plot 12, MIDC, Satara"
+                className={inputClass}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label htmlFor="loc-gst" className="text-sm font-medium text-black">
+                GST No. (optional)
+              </label>
+              <input
+                id="loc-gst"
+                type="text"
+                value={form.gst}
+                onChange={(e) => setForm({ ...form, gst: e.target.value.toUpperCase() })}
+                placeholder="e.g. 27ABCDE1234F1Z5"
+                className={inputClass}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
               <label htmlFor="loc-notes" className="text-sm font-medium text-black">
                 Notes (optional)
               </label>
@@ -388,7 +460,7 @@ export function PlantsVendorsModule() {
                 id="loc-notes"
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                placeholder="e.g. address, contact person"
+                placeholder="e.g. contact person"
                 className={inputClass}
                 rows={3}
               />

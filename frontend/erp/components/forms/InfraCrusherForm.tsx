@@ -6,6 +6,7 @@ import {
   DIESEL_RATE_PER_LITER,
   DIESEL_SUBFORM_FIELDS,
   INFRA_FIELDS,
+  INFRA_MATERIAL_TYPE_OPTIONS,
   TRIP_EXPENSE_AMOUNT_FIELDS,
   TRIP_EXPENSE_FIELDS,
   buildTripExpenseRef,
@@ -53,6 +54,12 @@ const SALE_NAMES = ["challanNo", "qtyBrass", "rate", "totalAmount", "difference"
 
 /** Sentinel option value that reveals the inline "add new client" sub-form. */
 const NEW_CLIENT_OPTION = "__new__";
+
+/** Sentinel option value that reveals the free-text "Type of Material" input. */
+const MATERIAL_TYPE_OTHER = "__other__";
+
+const selectClass =
+  "w-full rounded-md border border-black/15 bg-white px-2.5 py-1.5 text-sm text-black outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/30";
 
 const NEW_CLIENT_FIELDS: FieldConfig[] = [
   { name: "name", label: "Client / Company Name", type: "text", required: true, colSpan: 2 },
@@ -195,6 +202,21 @@ export function InfraCrusherForm() {
   const crusherFields = useMemo(() => fieldsByNames(fields, CRUSHER_NAMES), [fields]);
   const clientDisplayFields = useMemo(() => fieldsByNames(fields, CLIENT_DISPLAY_NAMES), [fields]);
   const saleFields = useMemo(() => fieldsByNames(fields, SALE_NAMES), [fields]);
+
+  // Picking "Other" clears materialType to "" so the user can type into a
+  // blank box — if the select's value were derived from materialType alone,
+  // that same "" would immediately read as "no selection" and the box would
+  // vanish right after appearing. materialTypeOtherMode is the explicit flag
+  // that survives the value going blank; a custom value loaded from an
+  // existing record (non-empty, not one of the fixed options) also implies
+  // Other mode so it re-opens pre-filled instead of silently blanking.
+  const [materialTypeOtherMode, setMaterialTypeOtherMode] = useState(false);
+  const materialTypeIsOther =
+    materialTypeOtherMode ||
+    (values.materialType !== "" && !INFRA_MATERIAL_TYPE_OPTIONS.includes(values.materialType));
+  const materialTypeSelectValue = materialTypeIsOther
+    ? MATERIAL_TYPE_OTHER
+    : values.materialType;
 
   // Tracks the ref actually persisted via "Save Diesel Fill Now", so the final
   // Save Trip submit doesn't create a second, duplicate Diesel Tank record for
@@ -379,6 +401,7 @@ export function InfraCrusherForm() {
     setSavedDieselFillRef(null);
     setClientSelectValue("");
     setNewClientValues(emptyNewClientValues());
+    setMaterialTypeOtherMode(false);
   }
 
   async function performSave() {
@@ -514,9 +537,44 @@ export function InfraCrusherForm() {
         </FormSection>
 
         <FormSection title="2. Crusher" description="Crusher Amount auto-calculates from Crusher Rate x Crusher Brass." columns={3}>
-          {crusherFields.map((field) => (
-            <FormField key={field.name} field={field} value={values[field.name]} onChange={handleChange} />
-          ))}
+          {crusherFields.map((field) =>
+            field.name === "materialType" ? (
+              <div key={field.name} className="flex flex-col gap-0.5">
+                <label htmlFor="field-materialType" className="text-xs font-medium text-black">
+                  {field.label}
+                </label>
+                <select
+                  id="field-materialType"
+                  value={materialTypeSelectValue}
+                  onChange={(e) => {
+                    const selected = e.target.value;
+                    setMaterialTypeOtherMode(selected === MATERIAL_TYPE_OTHER);
+                    handleChange("materialType", selected === MATERIAL_TYPE_OTHER ? "" : selected);
+                  }}
+                  className={selectClass}
+                >
+                  <option value="">Select…</option>
+                  {INFRA_MATERIAL_TYPE_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                  <option value={MATERIAL_TYPE_OTHER}>Other</option>
+                </select>
+                {materialTypeIsOther && (
+                  <input
+                    type="text"
+                    value={values.materialType}
+                    placeholder="Enter material type"
+                    onChange={(e) => handleChange("materialType", e.target.value)}
+                    className={`${selectClass} mt-1`}
+                  />
+                )}
+              </div>
+            ) : (
+              <FormField key={field.name} field={field} value={values[field.name]} onChange={handleChange} />
+            )
+          )}
         </FormSection>
 
         <FormSection

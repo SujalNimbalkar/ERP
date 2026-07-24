@@ -20,7 +20,8 @@ function getProps_() {
 }
 
 function getSpreadsheet_() {
-  const id = getProps_().getProperty("SPREADSHEET_ID") || SPREADSHEET_ID_FALLBACK;
+  const id =
+    getProps_().getProperty("SPREADSHEET_ID") || SPREADSHEET_ID_FALLBACK;
   return SpreadsheetApp.openById(id);
 }
 
@@ -39,7 +40,10 @@ function isAuthorized_(suppliedToken) {
     Utilities.DigestAlgorithm.SHA_256,
     String(suppliedToken),
   );
-  const b = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, expected);
+  const b = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    expected,
+  );
   let diff = 0;
   for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
   return diff === 0;
@@ -71,7 +75,11 @@ function getOrCreateFolder_(name) {
 function handleUploadImage_(payload) {
   const mimeType = payload.mimeType;
   const base64Data = payload.base64Data;
-  if (ALLOWED_IMAGE_MIME_TYPES.indexOf(mimeType) === -1 || typeof base64Data !== "string" || !base64Data) {
+  if (
+    ALLOWED_IMAGE_MIME_TYPES.indexOf(mimeType) === -1 ||
+    typeof base64Data !== "string" ||
+    !base64Data
+  ) {
     return { success: false, message: "Invalid image" };
   }
   try {
@@ -87,13 +95,21 @@ function handleUploadImage_(payload) {
     // the file (and its URL) still exists — just only openable by whoever
     // already has folder access, not link-only.
     try {
-      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      file.setSharing(
+        DriveApp.Access.ANYONE_WITH_LINK,
+        DriveApp.Permission.VIEW,
+      );
     } catch (sharingErr) {
-      console.error("uploadImage: setSharing failed (file still created): " + (sharingErr && sharingErr.stack ? sharingErr.stack : sharingErr));
+      console.error(
+        "uploadImage: setSharing failed (file still created): " +
+          (sharingErr && sharingErr.stack ? sharingErr.stack : sharingErr),
+      );
     }
     return { success: true, url: file.getUrl() };
   } catch (err) {
-    console.error("uploadImage failed: " + (err && err.stack ? err.stack : err));
+    console.error(
+      "uploadImage failed: " + (err && err.stack ? err.stack : err),
+    );
     return { success: false, message: "Upload failed" };
   }
 }
@@ -186,9 +202,9 @@ const CARGO_COLUMNS = CARGO_BASE_COLUMNS.concat(CARGO_MARKER_COLUMNS);
 /** Every plant lives in one shared tab now — `plantType` (e.g. "cargo-h19")
  * says which one. It has sat right after `driverName` since the tab was
  * created, so it MUST stay at that index — the marker columns come after. */
-const CARGO_TRIPS_COLUMNS = CARGO_BASE_COLUMNS
-  .concat(["plantType"])
-  .concat(CARGO_MARKER_COLUMNS);
+const CARGO_TRIPS_COLUMNS = CARGO_BASE_COLUMNS.concat(["plantType"]).concat(
+  CARGO_MARKER_COLUMNS,
+);
 
 const COLUMN_ORDER = {
   cargo: CARGO_TRIPS_COLUMNS,
@@ -259,8 +275,8 @@ const COLUMN_ORDER = {
     "driverName",
     "expectedTrips",
     "note",
-    // Appended last so existing sheet rows keep their column alignment
     "ratePerLiter",
+    "odometerKm",
   ],
   drivers: [
     "driverId",
@@ -321,7 +337,19 @@ const COLUMN_ORDER = {
   materials: ["id", "code", "name", "weightPerPieceKg", "ratePerKg", "addedAt"],
   // One list for both Cargo Plants and Delivery Vendors — `isCargoPlant`
   // ("true"/"false") flags which; `cargoType` is only set for plant rows.
-  locations: ["id", "name", "isCargoPlant", "cargoType", "notes", "addedAt", "updatedAt"],
+  locations: [
+    "id",
+    "name",
+    "isCargoPlant",
+    "cargoType",
+    "notes",
+    "addedAt",
+    "updatedAt",
+    // Appended last on purpose: ensureHeaderRow only backfills trailing
+    // header cells, so existing Locations rows stay aligned.
+    "address",
+    "gst",
+  ],
   staff: [
     "id",
     "name",
@@ -507,7 +535,9 @@ function doGet(e) {
     try {
       return jsonResponse(listData_(e.parameter.type));
     } catch (err) {
-      console.error("doGet list failed: " + (err && err.stack ? err.stack : err));
+      console.error(
+        "doGet list failed: " + (err && err.stack ? err.stack : err),
+      );
       return jsonResponse({ success: false, message: "Request failed" });
     }
   }
@@ -545,7 +575,9 @@ function ensureHeaderRow(sheet, columns) {
   // trailing cells can be blank here; isHeaderRow vouched for the rest.
   for (var i = 0; i < columns.length; i++) {
     if (first[i] === "" || first[i] === null) {
-      sheet.getRange(1, i + 1, 1, columns.length - i).setValues([columns.slice(i)]);
+      sheet
+        .getRange(1, i + 1, 1, columns.length - i)
+        .setValues([columns.slice(i)]);
       break;
     }
   }
@@ -683,7 +715,14 @@ function doPost(e) {
       if (action === "delete") {
         const rowNum = findRowById(sheet, payload.id);
         if (rowNum > 0) sheet.deleteRow(rowNum);
-        appendServerAudit_(ss, "delete", type, String(payload.id || ""), "server: deleted 1 row", user);
+        appendServerAudit_(
+          ss,
+          "delete",
+          type,
+          String(payload.id || ""),
+          "server: deleted 1 row",
+          user,
+        );
         return jsonResponse({
           success: true,
           message: "Deleted from " + tabName,
@@ -701,8 +740,18 @@ function doPost(e) {
         } else {
           sheet.appendRow(row);
         }
-        appendServerAudit_(ss, "upsert", type, String(id || ""), "server: upserted 1 row", user);
-        return jsonResponse({ success: true, message: "Upserted in " + tabName });
+        appendServerAudit_(
+          ss,
+          "upsert",
+          type,
+          String(id || ""),
+          "server: upserted 1 row",
+          user,
+        );
+        return jsonResponse({
+          success: true,
+          message: "Upserted in " + tabName,
+        });
       }
 
       // Default: append
@@ -883,4 +932,131 @@ function migrateCargoSheets() {
   Logger.log("Cargo migration complete. Total rows migrated: " + totalMigrated);
   Logger.log(summary.join("\n"));
   return { totalMigrated: totalMigrated, summary: summary };
+}
+
+/**
+ * Nightly backup: mirrors every live tab (everything in COLUMN_ORDER, incl.
+ * Audit Log) from the main spreadsheet into a second, separate spreadsheet.
+ * Merge only — existing backup rows are refreshed in place (matched by id,
+ * i.e. column 0) and new rows are appended, but nothing is ever deleted from
+ * the backup, even if a row disappears from the source. That way the backup
+ * can't lose history if something is ever removed (accidentally or not)
+ * from the live sheet.
+ *
+ * One-time setup:
+ *   1. Create the backup spreadsheet (a normal, blank Google Sheet works —
+ *      tabs are created automatically on first run).
+ *   2. Project Settings -> Script Properties -> add BACKUP_SPREADSHEET_ID,
+ *      value = the ID from that spreadsheet's URL.
+ *   3. Run createNightlyBackupTrigger() once (Run menu, pick it from the
+ *      dropdown) to schedule this function for ~midnight every night.
+ *      Triggers run off the saved script, not the web app deployment, so no
+ *      redeploy is needed for this part.
+ */
+function runNightlyBackup() {
+  const backupId = getProps_().getProperty("BACKUP_SPREADSHEET_ID");
+  if (!backupId) {
+    Logger.log(
+      "runNightlyBackup: BACKUP_SPREADSHEET_ID script property not set, skipping.",
+    );
+    return;
+  }
+
+  const sourceSs = getSpreadsheet_();
+  const destSs = SpreadsheetApp.openById(backupId);
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const summary = [];
+    Object.keys(COLUMN_ORDER).forEach(function (type) {
+      const columns = COLUMN_ORDER[type];
+      const tabName = SHEET_MAP[type];
+      const sourceRows = readSheetRows(sourceSs, type);
+      if (sourceRows === null) {
+        summary.push(tabName + ": source tab missing, skipped");
+        return;
+      }
+
+      let destSheet = destSs.getSheetByName(tabName);
+      if (!destSheet) destSheet = destSs.insertSheet(tabName);
+      ensureHeaderRow(destSheet, columns);
+
+      const idKey = columns[0];
+      const destIndex = buildIdRowIndex_(destSheet, idKey);
+
+      let updated = 0;
+      let appended = 0;
+      const newRows = [];
+      sourceRows.forEach(function (row) {
+        const id = row[idKey];
+        const rowValues = buildRow(columns, row);
+        const destRowNum =
+          id !== undefined && id !== null && id !== ""
+            ? destIndex[String(id)]
+            : undefined;
+        if (destRowNum) {
+          destSheet
+            .getRange(destRowNum, 1, 1, rowValues.length)
+            .setValues([rowValues]);
+          updated++;
+        } else {
+          newRows.push(rowValues);
+          appended++;
+        }
+      });
+      if (newRows.length > 0) {
+        destSheet
+          .getRange(
+            destSheet.getLastRow() + 1,
+            1,
+            newRows.length,
+            columns.length,
+          )
+          .setValues(newRows);
+      }
+      summary.push(
+        tabName + ": " + updated + " updated, " + appended + " appended",
+      );
+    });
+    Logger.log("Nightly backup complete.\n" + summary.join("\n"));
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Maps id (column 0 value, as a string) -> 1-based sheet row number, for
+ * every existing data row in `sheet`. Used to decide update-in-place vs
+ * append during merge. */
+function buildIdRowIndex_(sheet, idKey) {
+  const index = {};
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return index;
+  const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i][0];
+    if (id === "" || id === null || id === undefined) continue;
+    index[String(id)] = i + 2;
+  }
+  return index;
+}
+
+/**
+ * Run this once (Run menu -> createNightlyBackupTrigger) to schedule
+ * runNightlyBackup() for ~midnight every night. Safe to run again later
+ * (e.g. after changing the time) — it clears any previous trigger for this
+ * function first so duplicates never pile up.
+ */
+function createNightlyBackupTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (trigger) {
+    if (trigger.getHandlerFunction() === "runNightlyBackup") {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+  ScriptApp.newTrigger("runNightlyBackup")
+    .timeBased()
+    .atHour(0)
+    .everyDays(1)
+    .create();
+  Logger.log("Nightly backup trigger scheduled for ~00:00 daily.");
 }
