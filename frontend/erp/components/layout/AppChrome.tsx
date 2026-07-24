@@ -12,6 +12,7 @@ import { hasCloudSync, setCloudSyncFlag } from "@/lib/storageMode";
 import { setSessionUser } from "@/lib/sessionUser";
 import { migrateLegacyCargoRecords } from "@/lib/localStore";
 import { logout } from "@/app/actions/auth";
+import { getStaffByEmail, type StaffRecord } from "@/lib/staffStore";
 
 function formatFetchTime(iso: string | null): string {
   if (!iso) return "an earlier session";
@@ -60,11 +61,24 @@ export function AppChrome({
   // profile dropdown on the right. Both are irrelevant at md+ (sidebar).
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  // Resolves to a real staff identity once the Staff Master email matches
+  // the signed-in account — falls back to showing the raw email until then
+  // (e.g. before Staff data has been fetched, or for accounts with no match).
+  const [loggedInStaff, setLoggedInStaff] = useState<StaffRecord | undefined>(() =>
+    getStaffByEmail(sessionEmail)
+  );
 
   useEffect(() => {
     setMobileNavOpen(false);
     setProfileOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    const sync = () => setLoggedInStaff(getStaffByEmail(sessionEmail));
+    sync();
+    window.addEventListener("sahyadri-staff-update", sync);
+    return () => window.removeEventListener("sahyadri-staff-update", sync);
+  }, [sessionEmail]);
 
   // Runs once, unconditionally (even without cloud sync configured) — any
   // localStorage rows still under the old per-plant Cargo types get rewritten
@@ -170,10 +184,15 @@ export function AppChrome({
                 aria-expanded={profileOpen}
                 className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-tint text-sm font-semibold text-brand-text"
               >
-                {sessionEmail[0].toUpperCase()}
+                {(loggedInStaff?.name ?? sessionEmail)[0].toUpperCase()}
               </button>
               {profileOpen && (
                 <div className="absolute right-0 top-full z-20 mt-1 w-60 rounded-md border border-black/10 bg-white p-3 shadow-lg">
+                  {loggedInStaff && (
+                    <p className="truncate text-xs font-semibold text-black">
+                      {loggedInStaff.name} ({loggedInStaff.role})
+                    </p>
+                  )}
                   <p className="truncate text-xs text-black/60" title={sessionEmail}>
                     {sessionEmail}
                   </p>
@@ -242,6 +261,11 @@ export function AppChrome({
 
         {sessionEmail && (
           <div className="hidden border-t border-black/10 px-4 py-3 md:block">
+            {loggedInStaff && (
+              <p className="min-w-0 truncate text-xs font-semibold text-black">
+                {loggedInStaff.name} ({loggedInStaff.role})
+              </p>
+            )}
             <p className="min-w-0 truncate text-xs text-black/60" title={sessionEmail}>
               {sessionEmail}
             </p>

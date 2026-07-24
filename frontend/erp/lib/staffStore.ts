@@ -6,7 +6,7 @@ import { getDriverOptions } from "./driverStore";
 
 const STAFF_KEY = "sahyadri_staff_master";
 
-export const STAFF_ROLES = ["Accountant", "Hamal", "Other"] as const;
+export const STAFF_ROLES = ["Accountant", "Hamal", "Admin", "Other"] as const;
 
 export interface StaffRecord {
   id: string;
@@ -18,6 +18,8 @@ export interface StaffRecord {
   notes: string;
   addedAt: string;
   updatedAt: string;
+  /** The email the admin uses to create this person's login in the Firebase console. */
+  email: string;
 }
 
 export interface StaffOption {
@@ -51,6 +53,13 @@ export function getStaffById(id: string): StaffRecord | undefined {
   return readAll().find((s) => s.id === id);
 }
 
+/** Finds the staff record whose email matches a signed-in session email (case-insensitive). */
+export function getStaffByEmail(email: string): StaffRecord | undefined {
+  const target = email.trim().toLowerCase();
+  if (!target) return undefined;
+  return readAll().find((s) => (s.email ?? "").trim().toLowerCase() === target);
+}
+
 export function getStaffOptions(): StaffOption[] {
   return readAll().map((s) => ({
     value: s.id,
@@ -81,6 +90,7 @@ export function replaceWithSheetStaff(rows: Record<string, unknown>[]): void {
       notes: toStr(row.notes),
       addedAt: toStr(row.addedAt) || new Date().toISOString(),
       updatedAt: toStr(row.updatedAt),
+      email: toStr(row.email),
     }));
   writeAll(entries);
 }

@@ -33,10 +33,11 @@ interface EditState {
   mobileNumber: string;
   rate: string;
   notes: string;
+  email: string;
 }
 
 function blankNew(): Omit<StaffRecord, "id" | "addedAt" | "updatedAt"> {
-  return { name: "", role: STAFF_ROLES[0], mobileNumber: "", rate: "", notes: "" };
+  return { name: "", role: STAFF_ROLES[0], mobileNumber: "", rate: "", notes: "", email: "" };
 }
 
 export function StaffMasterModule() {
@@ -77,6 +78,7 @@ export function StaffMasterModule() {
       mobileNumber: s.mobileNumber,
       rate: s.rate,
       notes: s.notes,
+      email: s.email ?? "",
     });
     setEditError("");
   }
@@ -103,6 +105,7 @@ export function StaffMasterModule() {
       mobileNumber: current.mobileNumber.trim(),
       rate: current.rate.trim(),
       notes: current.notes.trim(),
+      email: current.email.trim(),
     });
     setEditing(null);
     setEditError("");
@@ -124,6 +127,7 @@ export function StaffMasterModule() {
       mobileNumber: form.mobileNumber.trim(),
       rate: form.rate.trim(),
       notes: form.notes.trim(),
+      email: form.email.trim(),
       addedAt: new Date().toISOString(),
       updatedAt: "",
     };
@@ -203,6 +207,9 @@ export function StaffMasterModule() {
                     Mobile
                   </th>
                   <th className="border-r border-black/10 px-3 py-2 text-xs font-semibold">
+                    Email
+                  </th>
+                  <th className="border-r border-black/10 px-3 py-2 text-xs font-semibold">
                     Salary (Rs)
                   </th>
                   <th className="border-r border-black/10 px-3 py-2 text-xs font-semibold">
@@ -214,7 +221,7 @@ export function StaffMasterModule() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-3 py-6 text-sm text-black">
+                    <td colSpan={8} className="px-3 py-6 text-sm text-black">
                       {staff.length === 0
                         ? "No staff added yet."
                         : `No staff match “${search}”.`}
@@ -257,6 +264,14 @@ export function StaffMasterModule() {
                               onChange={(e) =>
                                 setEditing({ ...editing, mobileNumber: e.target.value })
                               }
+                              className={cellInputClass}
+                            />
+                          </td>
+                          <td className="border-r border-black/10 px-2 py-1.5">
+                            <input
+                              type="email"
+                              value={editing.email}
+                              onChange={(e) => setEditing({ ...editing, email: e.target.value })}
                               className={cellInputClass}
                             />
                           </td>
@@ -309,6 +324,9 @@ export function StaffMasterModule() {
                         <td className="border-r border-black/10 px-3 py-2 text-xs">{s.role}</td>
                         <td className="border-r border-black/10 px-3 py-2 text-xs">
                           {s.mobileNumber || "—"}
+                        </td>
+                        <td className="border-r border-black/10 px-3 py-2 text-xs">
+                          {s.email || "—"}
                         </td>
                         <td className="border-r border-black/10 px-3 py-2 text-xs">
                           {s.rate ? `Rs ${s.rate}` : "—"}
@@ -401,6 +419,25 @@ export function StaffMasterModule() {
                 placeholder="10-digit mobile number"
                 className={inputClass}
               />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label htmlFor="staff-email" className="text-sm font-medium text-black">
+                Email (optional)
+              </label>
+              <input
+                id="staff-email"
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                placeholder="e.g. rohini@example.com"
+                className={inputClass}
+              />
+              <p className="text-xs text-black/60">
+                The email the admin uses to create this person&apos;s login in the Firebase
+                console. Once it matches their signed-in account, the app shows their name
+                instead of just their email.
+              </p>
             </div>
 
             <div className="flex flex-col gap-1">

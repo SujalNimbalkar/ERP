@@ -359,6 +359,9 @@ const COLUMN_ORDER = {
     "notes",
     "addedAt",
     "updatedAt",
+    // Appended last on purpose: ensureHeaderRow only backfills trailing
+    // header cells, so existing Staff rows stay aligned.
+    "email",
   ],
   // Client Company + project/site master for Infra & Crusher billing — one
   // row per client + project combo (a client with two sites is two rows).
