@@ -966,6 +966,22 @@ export function CargoTransportForm() {
     notify("Entry deleted — form cleared.", "error");
   }
 
+  /** Standalone "start over" button — clears the form and its cached draft
+   * without going through the Confirm & Save dialog (unlike handleDiscard,
+   * which is that dialog's "Delete Entry" action). Confirms first since
+   * there's no undo once the in-progress trip and its cache are gone. */
+  function handleClearForm() {
+    if (!window.confirm("Clear this form and its cached draft? This cannot be undone.")) {
+      return;
+    }
+    setValues(emptySourceValues());
+    setInvoices([createInvoice(activeSource.type)]);
+    resetLinkedRecordState();
+    clearCargoDraft();
+    resetStatus();
+    notify("Form cleared.", "error");
+  }
+
   /**
    * Captures the review dialog as an image *before* handing off to
    * confirmSave — confirmSave clears the pending action (and so unmounts
@@ -1365,7 +1381,14 @@ export function CargoTransportForm() {
 
         <StatusMessage type={status} message={message} />
 
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={handleClearForm}
+            className="rounded-md border border-black/15 bg-white px-5 py-2.5 text-sm font-medium text-black transition-colors hover:bg-black/5"
+          >
+            Clear Form
+          </button>
           <button
             type="submit"
             disabled={submitting}
